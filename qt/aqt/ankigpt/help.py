@@ -44,6 +44,15 @@ grading mode and a <b>Concept Settings</b> button. Study them like any deck. Eac
 shows a header with the mode and your mastery level; after answering you also see the model
 answer, key points, and a <i>From your notes</i> section with the concept the question came
 from.</p>
+<p><b>Sources.</b> The documents you built the deck from are kept (next to your
+profile, not in the collection). When a question is generated, the most relevant passages
+are retrieved from them and shown after you answer, under <i>From your notes</i>; passages
+the model relied on are starred. <b>Open in source</b> opens the document with those
+passages highlighted; <b>Open Original File</b> opens the file itself. The deck overview's
+<b>Sources</b> button browses the stored documents. For concepts you know well, the model
+may first read up to two more sections of your documents (one extra request; switch it off
+per deck in Concept Settings).</p>
+
 <p>Grading modes (per deck):</p>
 <ul>
 <li><b>Self-grade</b>: think, press Show Answer, rate with Again/Hard/Good/Easy as usual.</li>

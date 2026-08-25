@@ -92,6 +92,8 @@ class Document:
     total_chars: int = 0
     outline: str = ""
     report: ReadReport | None = None
+    path: str = ""
+    pages: list[int] = field(default_factory=list)  # char offset of each page start
 
     def __post_init__(self) -> None:
         if not self.total_chars:
@@ -126,28 +128,35 @@ def extract_text(path: str) -> Document:
     """Read a document to plain text (all of it; budgeting happens later)."""
     name = os.path.basename(path)
     lower = path.lower()
+    pages: list[int] = []
     if lower.endswith(".pdf"):
-        text = _pdf_text(path)
+        text, pages = _pdf_text(path)
     elif lower.endswith(".docx"):
-        text = _docx_text(path)
+        text = _normalize(_docx_text(path))
     elif lower.endswith((".txt", ".md", ".markdown")):
         with open(path, encoding="utf-8", errors="replace") as f:
-            text = f.read()
+            text = _normalize(f.read())
     else:
         raise ExtractionError(f"unsupported file type: {name}")
-    return Document(name=name, text=_normalize(text))
+    return Document(name=name, text=text, path=os.path.abspath(path), pages=pages)
 
 
-def _pdf_text(path: str) -> str:
+def _pdf_text(path: str) -> tuple[str, list[int]]:
+    """Normalized text of a PDF plus the offset at which each page starts."""
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover - dependency present in builds
         raise ExtractionError("PDF support requires the pypdf package") from exc
     reader = PdfReader(path)
-    pages = []
+    parts: list[str] = []
+    starts: list[int] = []
+    pos = 0
     for page in reader.pages:
-        pages.append(page.extract_text() or "")
-    return "\n\n".join(pages)
+        page_text = _normalize(page.extract_text() or "")
+        starts.append(pos)
+        parts.append(page_text)
+        pos += len(page_text) + 2
+    return "\n\n".join(parts), starts
 
 
 def _docx_text(path: str) -> str:

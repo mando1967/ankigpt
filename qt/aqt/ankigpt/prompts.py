@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from anki import scheduler_pb2
 from anki.cards import Card
+from aqt.ankigpt.retrieve import Passage, preview
 
 Mode = Literal["self", "typed", "mcq"]
 MODES: tuple[Mode, ...] = ("self", "typed", "mcq")
@@ -25,6 +26,8 @@ MODES: tuple[Mode, ...] = ("self", "typed", "mcq")
 CHUNK_MARKER = "=== DOCUMENT TEXT ==="
 CANDIDATES_MARKER = "=== CANDIDATE CONCEPTS (JSON) ==="
 RECENT_MARKER = "=== RECENTLY ASKED (avoid repeating) ==="
+PASSAGES_MARKER = "=== RETRIEVED PASSAGES ==="
+CANDIDATE_SECTIONS_MARKER = "=== CANDIDATE SECTIONS ==="
 SECTIONS_MARKER = "=== SECTIONS ==="
 WANT_RE = re.compile(r"Return (?:at most|exactly) (\d+) concepts")
 
@@ -193,6 +196,8 @@ class QuestionRequest:
     mastery: MasteryInfo
     mode: Mode
     recent_questions: list[str] = field(default_factory=list)
+    passages: list[Passage] = field(default_factory=list)
+    lookup_candidates: list[Passage] = field(default_factory=list)
 
 
 @dataclass
@@ -204,6 +209,7 @@ class GeneratedQuestion:
     options: list[str] = field(default_factory=list)
     correct_index: int = -1
     explanation: str = ""
+    source_refs: list[int] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(
@@ -215,6 +221,7 @@ class GeneratedQuestion:
                 "options": self.options,
                 "correct_index": self.correct_index,
                 "explanation": self.explanation,
+                "source_refs": self.source_refs,
             }
         )
 
@@ -229,6 +236,7 @@ class GeneratedQuestion:
             options=list(d.get("options", [])),
             correct_index=int(d.get("correct_index", -1)),
             explanation=d.get("explanation", ""),
+            source_refs=[int(r) for r in d.get("source_refs", [])],
         )
 
 
@@ -280,6 +288,14 @@ QUESTION_SCHEMA = _obj(
         "options": _str_list(),
         "correct_index": {"type": "integer"},
         "explanation": {"type": "string"},
+        "source_refs": {"type": "array", "items": {"type": "integer"}},
+    }
+)
+
+LOOKUP_SCHEMA = _obj(
+    {
+        "sections": {"type": "array", "items": {"type": "integer"}},
+        "rationale": {"type": "string"},
     }
 )
 
@@ -357,6 +373,7 @@ Rules:
 - Match the requested difficulty style.
 - "model_answer": a concise reference answer (2-5 sentences).
 - "key_points": 2-5 short items a good answer must include.
+- If retrieved passages are given, prefer material from them for applied and transfer questions, and list the numbers of the passages you actually relied on in "source_refs" (empty if none).
 - Use plain text (no markdown headings). Short inline HTML like <b>, <i>, <code> is allowed.
 """
 
@@ -369,6 +386,14 @@ _MODE_INSTRUCTIONS: dict[Mode, str] = {
 
 def _bullets(items: list[str]) -> str:
     return "\n".join(f"- {i}" for i in items) if items else "(none)"
+
+
+def format_passages(passages: list[Passage]) -> str:
+    if not passages:
+        return "(none)"
+    return "\n\n".join(
+        f'[{i}] ({p.label()})\n"""{p.text}"""' for i, p in enumerate(passages, start=1)
+    )
 
 
 def build_question_prompt(req: QuestionRequest) -> tuple[str, str]:
@@ -387,6 +412,9 @@ SOURCE EXCERPTS:
 
 COURSE CONTEXT: {req.context or "(none given)"}
 
+{PASSAGES_MARKER}
+{format_passages(req.passages)}
+
 LEARNER MASTERY: {req.mastery.level}
 DIFFICULTY STYLE: {req.mastery.style_hint()}
 
@@ -397,6 +425,41 @@ QUESTION FORMAT: {req.mode}
 {recent}
 """
     return _QUESTION_SYSTEM, user
+
+
+_LOOKUP_SYSTEM = """You are preparing to write an advanced study question about a concept, and may read more of the learner's course material first.
+You see the concept, the passages already retrieved, and candidate sections (title, position, preview). Pick at most 2 candidate sections whose full text would let you ask a better applied, transfer or critique question — for example a worked example, an edge case, a contrast with a related idea. Pick none if the retrieved passages already suffice.
+"""
+
+
+def build_lookup_prompt(req: QuestionRequest) -> tuple[str, str]:
+    lines = []
+    for i, c in enumerate(req.lookup_candidates, start=1):
+        lines.append(f"[{i}] ({c.label()}, {len(c.text):,} chars): {preview(c.text)}")
+    user = f"""CONCEPT: {req.title}
+SUMMARY: {req.summary}
+LEARNER MASTERY: {req.mastery.level} — {req.mastery.style_hint()}
+
+{PASSAGES_MARKER}
+{format_passages(req.passages)}
+
+{CANDIDATE_SECTIONS_MARKER}
+{chr(10).join(lines) or "(none)"}
+"""
+    return _LOOKUP_SYSTEM, user
+
+
+def parse_lookup(data: dict[str, Any], count: int) -> list[int]:
+    """1-based candidate numbers chosen by the model, validated, at most 2."""
+    out: list[int] = []
+    for item in data.get("sections", []):
+        try:
+            n = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= count and n not in out:
+            out.append(n)
+    return out[:2]
 
 
 def parse_question(data: dict[str, Any], mode: Mode) -> GeneratedQuestion:
@@ -413,6 +476,12 @@ def parse_question(data: dict[str, Any], mode: Mode) -> GeneratedQuestion:
     else:
         options = []
         correct = -1
+    refs: list[int] = []
+    for item in data.get("source_refs", []):
+        try:
+            refs.append(int(item))
+        except (TypeError, ValueError):
+            continue
     return GeneratedQuestion(
         question=question,
         model_answer=str(data.get("model_answer", "")).strip(),
@@ -423,6 +492,7 @@ def parse_question(data: dict[str, Any], mode: Mode) -> GeneratedQuestion:
         options=options,
         correct_index=correct,
         explanation=str(data.get("explanation", "")).strip(),
+        source_refs=refs,
     )
 
 

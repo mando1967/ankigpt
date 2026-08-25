@@ -162,6 +162,19 @@ def run() -> None:
     reviewer.web.eval("window.scrollTo(0, 0);")
     shot(mw, "07-review-graded", 0.5)
 
+    # ---- 5b. the source viewer, opened from the answer's "Open in source" link
+    from aqt.ankigpt.sources import SourceViewerDialog
+
+    cur = reviewer.ankigpt._current
+    docs = get_store().documents_for_deck(int(deck_id))
+    if cur is not None and cur.passages and docs:
+        viewer = SourceViewerDialog(
+            mw, docs, cur.passages[0].doc_id, [(p.start, p.end) for p in cur.passages]
+        )
+        viewer.show()
+        shot(viewer, "11-source-viewer", 1.0)
+        viewer.close()
+
     # ---- 6. multiple choice on the next card (fresh generation)
     first_id = reviewer.card.id
     save_deck_settings(col, deck_id, DeckSettings(mode="mcq", context=INSTRUCTIONS))

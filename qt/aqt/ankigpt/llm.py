@@ -187,6 +187,10 @@ class FakeLLMClient:
             return self._grade(user)
         if schema_name == "plan_reading":
             return self._plan(user)
+        if schema_name == "lookup_sources":
+            candidates = user.split(prompts.CANDIDATE_SECTIONS_MARKER, 1)[-1]
+            picks = [1] if re.search(r"^\[1\]", candidates, re.MULTILINE) else []
+            return {"sections": picks, "rationale": "fake lookup"}
         if schema_name == "find_gaps":
             return {"sections": [], "rationale": "fake: nothing missing"}
         raise LLMError(f"fake client: unknown schema {schema_name}")
@@ -251,6 +255,10 @@ class FakeLLMClient:
         recent = user.split(prompts.RECENT_MARKER, 1)[-1]
         n = sum(1 for line in recent.splitlines() if line.startswith("- "))
         question = f"[fake #{n + 1}, {level}] Explain the concept: {title}"
+        passages = user.split(prompts.PASSAGES_MARKER, 1)[-1].split(
+            "LEARNER MASTERY", 1
+        )[0]
+        refs = [1] if re.search(r"^\[1\]", passages, re.MULTILINE) else []
         out: dict[str, Any] = {
             "question": question,
             "model_answer": f"A model answer about {title}.",
@@ -258,6 +266,7 @@ class FakeLLMClient:
             "options": [],
             "correct_index": -1,
             "explanation": "",
+            "source_refs": refs,
         }
         if mode == "mcq":
             out["question"] = (

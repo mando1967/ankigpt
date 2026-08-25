@@ -114,3 +114,16 @@ ankigpt-from-your-notes = From your notes: { $title }
 ankigpt-deck-badge = AI
 ankigpt-menu-help = AnkiGPT Guide...
 ankigpt-help-title = AnkiGPT Guide
+
+## Sources
+ankigpt-sources-button = Sources
+ankigpt-sources-title = AnkiGPT Sources
+ankigpt-open-original = Open Original File
+ankigpt-next-highlight = Next Highlight
+ankigpt-original-missing = The original file is no longer at its recorded location.
+ankigpt-no-sources = No source documents are stored for this deck. Documents are kept when a concept deck is created from files.
+ankigpt-source-info = { $chars } characters, { $sections } sections{ $pages }
+ankigpt-open-in-source = Open in source
+ankigpt-passages-title = Passages retrieved from your documents for this question (starred = used by the AI)
+ankigpt-deep-lookup = Let the AI read more of the source documents for well-known concepts (one extra request)
+ankigpt-deep-lookup-tooltip = For concepts at "solid" mastery or above, the AI may pull in up to two more sections of your documents before writing an applied or transfer question.

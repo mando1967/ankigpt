@@ -59,7 +59,16 @@ class Harness:
                 ConceptCandidate(
                     "Opportunity cost", "Next best alternative.", ["k1"], ["s"]
                 ),
-                ConceptCandidate("Elasticity", "Responsiveness.", ["k2"], []),
+                ConceptCandidate(
+                    "Elasticity",
+                    "Responsiveness of quantity demanded to a price change.",
+                    [
+                        "ratio of percentage changes",
+                        "elastic when above 1",
+                        "total revenue",
+                    ],
+                    [],
+                ),
             ],
         )
         save_deck_settings(col, self.deck_id, DeckSettings(mode=mode))
@@ -359,3 +368,70 @@ def test_prefetch_populates_cache(harness: Callable[..., Harness]) -> None:
     assert h.store.get_cached(second.id, second.note().mod) is not None
     h.controller._on_show_question(first)
     assert not h.runner.pending  # already cached
+
+
+def test_stored_documents_feed_passages_and_lookup(
+    harness: Callable[..., Harness],
+) -> None:
+    from aqt.ankigpt import extract
+    from aqt.ankigpt.retrieve import StoredSection
+
+    h = harness("typed")
+    sample = os.path.join(
+        os.path.dirname(__file__), "..", "..", "docs", "ankigpt", "sample-course.md"
+    )
+    with open(sample, encoding="utf-8") as f:
+        text = extract._normalize(f.read())
+    sections = [
+        StoredSection(s.index, s.title, s.start, s.end)
+        for s in extract.split_sections(text, min_chars=300)
+    ]
+    h.store.add_document(int(h.deck_id), "sample-course.md", sample, text, sections)
+
+    # a well-known concept: retrieval + one lookup call before generation
+    card = next(c for c in h.cards if c.note()["Title"] == "Elasticity")
+    state = scheduler_pb2.SchedulingState()
+    state.normal.review.memory_state.stability = 20  # -> "solid"
+    h.show(card, state)
+    h.controller.intercept_question()
+    h.runner.flush()
+    q = card.question()
+    assert "[fake" in q
+    cur = h.controller._current
+    assert cur is not None and cur.passages
+    assert any("Elasticity" in p.section for p in cur.passages)
+    # the fake lookup adds candidate [1] on top of the lexical passages
+    assert len(cur.passages) >= 2
+    assert cur.question.source_refs == [1]
+
+    h.reviewer.typedAnswer = "responsiveness of quantity to price"
+    h.controller.intercept_answer()
+    h.runner.flush()
+    answer = card.answer()
+    assert "ankigpt-passage" in answer and "Open in source" in answer
+    assert "ankigpt:source:" in answer
+    assert "&#9733;" in answer  # the starred passage the model relied on
+
+    # clicking the link routes through the webview hook to the source viewer
+    with patch("aqt.ankigpt.sources.show_sources") as show:
+        first = cur.passages[0]
+        handled = h.controller._on_js_message(
+            (False, None),
+            f"ankigpt:source:{first.doc_id}:{first.start}:{first.end}",
+            h.reviewer,
+        )
+        assert handled == (True, None)
+        show.assert_called_once()
+        args = show.call_args[0]
+        assert args[2] == first.doc_id
+        assert (first.start, first.end) in args[3]
+
+    # a new concept gets passages but no lookup call (mastery too low)
+    other = next(c for c in h.cards if c.note()["Title"] != "Elasticity")
+    h.controller._on_answer_card(h.reviewer, card, 3)
+    h.show(other)
+    h.controller.intercept_question()
+    h.runner.flush()
+    cur2 = h.controller._current
+    assert cur2 is not None and cur2.card_id == other.id
+    assert cur2.passages

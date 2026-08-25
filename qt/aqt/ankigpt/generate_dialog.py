@@ -326,6 +326,7 @@ class CreateConceptDeckDialog(QDialog):
         target = self.target.value()
         self._cancel_requested = False
         self._sampled: list[extract.Document] = []
+        self._docs: list[extract.Document] = []
         mw = self.mw
         self._start_progress()
         self._log(tr.ankigpt_reading_files())
@@ -354,6 +355,7 @@ class CreateConceptDeckDialog(QDialog):
                 max_chars_per_file=config.max_chars_per_file,
             )
             self._sampled = [d for d in docs if d.report and d.report.partial]
+            self._docs = docs
             return result
 
         self.extract_btn.setEnabled(False)
@@ -464,7 +466,10 @@ class CreateConceptDeckDialog(QDialog):
             save_deck_settings(col, deck_id, settings)
             return changes
 
+        docs = list(self._docs)
+
         def on_done(_changes: OpChanges) -> None:
+            self._store_documents(deck_name, docs)
             tooltip(
                 tr.ankigpt_created_notes(count=len(selected), deck=deck_name),
                 parent=mw,
@@ -472,6 +477,32 @@ class CreateConceptDeckDialog(QDialog):
             self.close()
 
         CollectionOp(parent=self, op=op).success(on_done).run_in_background()
+
+    def _store_documents(self, deck_name: str, docs: list[extract.Document]) -> None:
+        """Keep the source text so questions can cite and open it later."""
+        from aqt.ankigpt import get_store
+        from aqt.ankigpt.retrieve import StoredSection
+
+        deck_id = self.mw.col.decks.id_for_name(deck_name)
+        if deck_id is None:
+            return
+        try:
+            store = get_store()
+            for doc in docs:
+                # finer than the reading planner's grouping: citations should
+                # name the actual section a passage comes from
+                sections = [
+                    StoredSection(s.index, s.title, s.start, s.end)
+                    for s in extract.split_sections(
+                        doc.text, min_chars=300, max_sections=2000
+                    )
+                ]
+                store.add_document(
+                    int(deck_id), doc.name, doc.path, doc.text, sections, doc.pages
+                )
+        except Exception:
+            # sources are a convenience; never block deck creation on them
+            pass
 
     def reject(self) -> None:
         saveGeom(self, "ankigptCreateDeck")

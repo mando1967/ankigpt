@@ -55,6 +55,11 @@ _CSS = f"""/* ankigpt-css-v{CSS_VERSION} */
 .ankigpt-source {{ margin-top: 1.2em; font-size: 0.9em; }}
 .ankigpt-source summary {{ cursor: pointer; color: #4a90d9; }}
 .ankigpt-source-body {{ margin-top: 0.5em; }}
+.ankigpt-passages-title {{ font-weight: bold; margin-top: 0.8em; }}
+.ankigpt-passage {{ margin: 0.5em 0; }}
+.ankigpt-passage-label {{ font-size: 0.85em; color: #888; }}
+.ankigpt-passage-used .ankigpt-passage-label {{ color: #4a90d9; }}
+.ankigpt-open-source {{ color: #4a90d9; text-decoration: none; }}
 .ankigpt-source blockquote {{ border-left: 3px solid #bbb; margin: 0.5em 0; padding-left: 0.6em; color: #777; }}
 .ankigpt-header {{ font-size: 0.75em; letter-spacing: 0.04em; text-transform: uppercase; color: #4a90d9; margin-bottom: 0.8em; }}
 .ankigpt-feedback {{ border-left: 3px solid #4a90d9; padding-left: 0.6em; margin: 0.8em 0; }}

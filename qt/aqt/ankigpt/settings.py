@@ -161,6 +161,7 @@ class DeckSettings:
     auto_submit: bool = False
     auto_submit_delay_ms: int = 2500
     context: str = ""
+    deep_lookup: bool = True
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> DeckSettings:
@@ -172,6 +173,7 @@ class DeckSettings:
             auto_submit=bool(d.get("auto_submit", False)),
             auto_submit_delay_ms=int(d.get("auto_submit_delay_ms", 2500)),
             context=str(d.get("context", "")),
+            deep_lookup=bool(d.get("deep_lookup", True)),
         )
 
 
@@ -234,6 +236,11 @@ class DeckSettingsDialog(QDialog):
         self.delay.setValue(self.settings.auto_submit_delay_ms / 1000)
         form.addRow(tr.ankigpt_auto_submit_delay(), self.delay)
 
+        self.deep_lookup = QCheckBox(tr.ankigpt_deep_lookup())
+        self.deep_lookup.setChecked(self.settings.deep_lookup)
+        self.deep_lookup.setToolTip(tr.ankigpt_deep_lookup_tooltip())
+        form.addRow(self.deep_lookup)
+
         self.context = QPlainTextEdit(self.settings.context)
         self.context.setPlaceholderText(tr.ankigpt_instructions_placeholder())
         form.addRow(tr.ankigpt_deck_context(), self.context)
@@ -258,6 +265,7 @@ class DeckSettingsDialog(QDialog):
             auto_submit=self.auto_submit.isChecked(),
             auto_submit_delay_ms=int(self.delay.value() * 1000),
             context=self.context.toPlainText().strip(),
+            deep_lookup=self.deep_lookup.isChecked(),
         )
         save_deck_settings(self.mw.col, self.deck_id, self.settings)
         # questions prefetched under the old mode must not be reused

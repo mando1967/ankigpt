@@ -188,6 +188,7 @@ def _install_overview(mw: AnkiQt) -> None:
         if not deck_has_concepts(mw, deck_id):
             return link_handler
         links.append(["", "ankigpt_settings", tr.ankigpt_concept_settings_button()])
+        links.append(["", "ankigpt_sources", tr.ankigpt_sources_button()])
 
         def handler(url: str) -> bool:
             if url == "ankigpt_settings":
@@ -195,6 +196,11 @@ def _install_overview(mw: AnkiQt) -> None:
 
                 open_deck_settings(mw, deck_id)
                 mw.overview.refresh()
+                return True
+            if url == "ankigpt_sources":
+                from aqt.ankigpt.sources import show_sources
+
+                show_sources(mw, deck_id)
                 return True
             return link_handler(url)
 

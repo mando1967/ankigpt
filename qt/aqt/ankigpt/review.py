@@ -25,11 +25,12 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from anki import scheduler_pb2
 from anki.cards import Card, CardId
+from anki.decks import DeckId
 from anki.notes import NoteId
 from anki.scheduler.v3 import Scheduler as V3Scheduler
 from anki.template import TemplateRenderOutput
 from aqt import gui_hooks
-from aqt.ankigpt import concepts, prompts
+from aqt.ankigpt import concepts, prompts, retrieve
 from aqt.ankigpt.llm import FakeLLMClient, LLMClient, make_client
 from aqt.ankigpt.prompts import (
     GeneratedQuestion,
@@ -57,6 +58,8 @@ AsyncRunner = Callable[
 PREFETCH_AHEAD = 2
 GENERATE_ATTEMPTS = 2
 JS_CHOOSE_PREFIX = "ankigpt:choose:"
+JS_SOURCE_PREFIX = "ankigpt:source:"
+DEEP_LOOKUP_LEVELS = ("solid", "mastered", "expert")
 
 
 @dataclass
@@ -73,6 +76,7 @@ class ActiveQuestion:
     summary: str = ""
     concept_points: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    passages: list[retrieve.Passage] = field(default_factory=list)
     history_id: int | None = None
     user_answer: str | None = None
     choice: int | None = None
@@ -135,7 +139,9 @@ class ConceptReviewController:
         store = self.store_provider()
         if cached := store.get_cached(card.id, note.mod):
             store.drop_cached(card.id)
-            self._activate(card, cached.question, cached.question.mode, state)
+            self._activate(
+                card, cached.question, cached.question.mode, state, cached.passages
+            )
             card.start_timer()
             return False
 
@@ -159,7 +165,7 @@ class ConceptReviewController:
                 # note edited while generating: start over with fresh fields
                 r._showQuestion()
                 return
-            self._activate(card, question, mode, state)
+            self._activate(card, question, mode, state, req.passages)
             card.start_timer()
             r._showQuestion()
 
@@ -286,21 +292,56 @@ class ConceptReviewController:
         context = settings.context or concepts.field_to_text(
             note[concepts.FIELD_CONTEXT]
         )
+        title = concepts.field_to_text(note[concepts.FIELD_TITLE])
+        summary = concepts.field_to_text(note[concepts.FIELD_SUMMARY])
+        key_points = concepts.field_to_lines(note[concepts.FIELD_KEY_POINTS])
+        mastery = prompts.mastery_from_state(state, card)
+        store = self.store_provider()
+        passages: list[retrieve.Passage] = []
+        candidates: list[retrieve.Passage] = []
+        try:
+            docs = store.documents_for_deck(int(card.current_deck_id()))
+            if docs:
+                passages = retrieve.lexical_passages(docs, title, key_points, summary)
+                if settings.deep_lookup and mastery.level in DEEP_LOOKUP_LEVELS:
+                    chosen = {(p.doc_id, p.section) for p in passages}
+                    candidates = [
+                        c
+                        for c in retrieve.candidate_sections(
+                            docs, title, key_points, summary
+                        )
+                        if (c.doc_id, c.section) not in chosen
+                    ]
+        except Exception:
+            passages, candidates = [], []
         return QuestionRequest(
-            title=concepts.field_to_text(note[concepts.FIELD_TITLE]),
-            summary=concepts.field_to_text(note[concepts.FIELD_SUMMARY]),
-            key_points=concepts.field_to_lines(note[concepts.FIELD_KEY_POINTS]),
+            title=title,
+            summary=summary,
+            key_points=key_points,
             sources=concepts.field_to_lines(note[concepts.FIELD_SOURCES]),
             context=context,
-            mastery=prompts.mastery_from_state(state, card),
+            mastery=mastery,
             mode=mode,
-            recent_questions=self.store_provider().recent_questions(note.id),
+            recent_questions=store.recent_questions(note.id),
+            passages=passages,
+            lookup_candidates=candidates,
         )
 
     @staticmethod
     def _generate(
         client: LLMClient | FakeLLMClient, req: QuestionRequest
     ) -> GeneratedQuestion:
+        if req.lookup_candidates:
+            # one bounded lookup: the model may pull in up to two more sections
+            try:
+                system, user = prompts.build_lookup_prompt(req)
+                data = client.complete_json(
+                    system, user, "lookup_sources", prompts.LOOKUP_SCHEMA
+                )
+                for n in prompts.parse_lookup(data, len(req.lookup_candidates)):
+                    req.passages.append(req.lookup_candidates[n - 1])
+            except Exception:
+                pass
         system, user = prompts.build_question_prompt(req)
         last: Exception | None = None
         for _ in range(GENERATE_ATTEMPTS):
@@ -326,6 +367,7 @@ class ConceptReviewController:
         question: GeneratedQuestion,
         mode: Mode,
         state: scheduler_pb2.SchedulingState | None,
+        passages: list[retrieve.Passage] | None = None,
     ) -> None:
         note = card.note()
         _mode, settings = self._pick_mode(card)
@@ -340,6 +382,7 @@ class ConceptReviewController:
             summary=concepts.field_to_text(note[concepts.FIELD_SUMMARY]),
             concept_points=concepts.field_to_lines(note[concepts.FIELD_KEY_POINTS]),
             sources=concepts.field_to_lines(note[concepts.FIELD_SOURCES]),
+            passages=list(passages or []),
             question=question,
             mastery=mastery,
             settings=settings,
@@ -356,7 +399,13 @@ class ConceptReviewController:
         client_model = llm_config(self.mw.pm).model
         try:
             cur.history_id = self.store_provider().log_question(
-                note.id, card.id, mode, mastery.level, question, client_model
+                note.id,
+                card.id,
+                mode,
+                mastery.level,
+                question,
+                client_model,
+                cur.passages,
             )
         except Exception:
             cur.history_id = None
@@ -478,7 +527,9 @@ class ConceptReviewController:
             self._prefetching.add(cid)
             self.run_async(
                 partial(self._generate, client, req),
-                partial(self._on_prefetched, cid, note.id, note.mod, req.mastery.level),
+                partial(
+                    self._on_prefetched, cid, note.id, note.mod, req.mastery.level, req
+                ),
                 partial(self._on_prefetch_failed, cid),
             )
 
@@ -488,11 +539,14 @@ class ConceptReviewController:
         nid: NoteId,
         note_mod: int,
         mastery: str,
+        req: QuestionRequest,
         question: GeneratedQuestion,
     ) -> None:
         self._prefetching.discard(cid)
         try:
-            self.store_provider().put_cached(cid, nid, note_mod, mastery, question)
+            self.store_provider().put_cached(
+                cid, nid, note_mod, mastery, question, req.passages
+            )
         except Exception:
             pass
 
@@ -606,7 +660,12 @@ class ConceptReviewController:
     def _on_js_message(
         self, handled: tuple[bool, Any], message: str, context: Any
     ) -> tuple[bool, Any]:
-        if context is not self.reviewer or not message.startswith(JS_CHOOSE_PREFIX):
+        if context is not self.reviewer:
+            return handled
+        if message.startswith(JS_SOURCE_PREFIX):
+            self._open_source(message[len(JS_SOURCE_PREFIX) :])
+            return (True, None)
+        if not message.startswith(JS_CHOOSE_PREFIX):
             return handled
         try:
             index = int(message[len(JS_CHOOSE_PREFIX) :])
@@ -614,6 +673,22 @@ class ConceptReviewController:
             return (True, None)
         self._choose(index)
         return (True, None)
+
+    def _open_source(self, arg: str) -> None:
+        """'docid:start:end' from an Open-in-source link on the answer side."""
+        cur = self._current
+        card = self.reviewer.card
+        try:
+            doc_id, start, end = (int(x) for x in arg.split(":"))
+        except ValueError:
+            return
+        from aqt.ankigpt.sources import show_sources
+
+        highlights = [(p.start, p.end) for p in (cur.passages if cur else [])]
+        if (start, end) not in highlights:
+            highlights.insert(0, (start, end))
+        deck_id = card.current_deck_id() if card else DeckId(1)
+        show_sources(self.mw, deck_id, doc_id, highlights)
 
     def _on_state_shortcuts(
         self, state: str, shortcuts: list[tuple[str, Callable]]
@@ -721,16 +796,41 @@ def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
     return f'<div class="ankigpt-header">{" &middot; ".join(html.escape(b) for b in bits)}</div>'
 
 
+def _passage_html(index: int, passage: retrieve.Passage, used: bool) -> str:
+    link = (
+        f'<a href="#" class="ankigpt-open-source" onclick="pycmd(\'{JS_SOURCE_PREFIX}'
+        f"{passage.doc_id}:{passage.start}:{passage.end}');return false;\">"
+        f"{html.escape(tr.ankigpt_open_in_source())}</a>"
+    )
+    star = " &#9733;" if used else ""
+    return (
+        f'<div class="ankigpt-passage{" ankigpt-passage-used" if used else ""}">'
+        f'<div class="ankigpt-passage-label">[{index}]{star} {html.escape(passage.label())}'
+        f" &middot; {link}</div>"
+        f"<blockquote>{sanitize(retrieve.preview(passage.text, 600))}</blockquote></div>"
+    )
+
+
 def render_source_html(cur: ActiveQuestion) -> str:
-    """Collapsible 'From your notes' block: the concept the question came from."""
+    """'From your notes' block: the concept the question came from, plus the
+    passages retrieved from the stored documents (starred if the model used them)."""
     body = []
     if cur.summary:
         body.append(f"<p>{sanitize(cur.summary)}</p>")
     if cur.concept_points:
         items = "".join(f"<li>{sanitize(p)}</li>" for p in cur.concept_points)
         body.append(f"<ul>{items}</ul>")
-    for source in cur.sources:
-        body.append(f"<blockquote>{sanitize(source)}</blockquote>")
+    if cur.passages:
+        used = set(cur.question.source_refs)
+        body.append(
+            '<div class="ankigpt-passages-title">'
+            f"{html.escape(tr.ankigpt_passages_title())}</div>"
+        )
+        for i, passage in enumerate(cur.passages, start=1):
+            body.append(_passage_html(i, passage, i in used))
+    else:
+        for source in cur.sources:
+            body.append(f"<blockquote>{sanitize(source)}</blockquote>")
     if not body:
         return ""
     label = html.escape(tr.ankigpt_from_your_notes(title=cur.title))
