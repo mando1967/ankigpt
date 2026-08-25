@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import os
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 STORE_FILENAME = "ankigpt.sqlite"
 _store: Store | None = None
+_menu: QMenu | None = None
 
 
 def get_store() -> Store:
@@ -52,7 +54,8 @@ def install(mw: AnkiQt) -> None:
     """Add menu entries and hooks. Called once from AnkiQt setup."""
     from aqt.ankigpt.generate_dialog import CreateConceptDeckDialog, open_deck_settings
 
-    menu = QMenu(tr.ankigpt_menu(), mw)
+    global _menu
+    menu = _menu = QMenu(tr.ankigpt_menu(), mw)
     create_action = QAction(tr.ankigpt_menu_create_deck(), mw)
     qconnect(create_action.triggered, lambda: CreateConceptDeckDialog(mw))
     menu.addAction(create_action)
@@ -71,7 +74,67 @@ def install(mw: AnkiQt) -> None:
     gui_hooks.deck_browser_will_show_options_menu.append(on_deck_options_menu)
     _install_deck_browser_button(mw)
     _install_overview(mw)
+    _install_deck_badges(mw)
+    _install_help(mw)
+    gui_hooks.profile_did_open.append(lambda: _refresh_notetype_css(mw))
     gui_hooks.profile_will_close.append(_close_store)
+
+
+_BADGE_RE = re.compile(r"""(onclick="return pycmd\('open:(\d+)'\)">)(.*?)(</a>)""")
+
+
+def badge_deck_tree(tree: str, concept_decks: set[int], label: str) -> str:
+    """Append an AI badge to concept decks in the deck browser's tree HTML."""
+    if not concept_decks:
+        return tree
+    badge = (
+        ' <span class="ankigpt-badge" style="font-size:0.7em;font-weight:bold;'
+        "color:#fff;background:#4a90d9;border-radius:4px;padding:1px 5px;"
+        f'vertical-align:middle;">{html.escape(label)}</span>'
+    )
+
+    def repl(m: re.Match[str]) -> str:
+        if int(m.group(2)) in concept_decks:
+            return f"{m.group(1)}{m.group(3)}{badge}{m.group(4)}"
+        return m.group(0)
+
+    return _BADGE_RE.sub(repl, tree)
+
+
+def _install_deck_badges(mw: AnkiQt) -> None:
+    from aqt.ankigpt.concepts import concept_deck_ids
+    from aqt.deckbrowser import DeckBrowser, DeckBrowserContent
+
+    def on_render(_browser: DeckBrowser, content: DeckBrowserContent) -> None:
+        try:
+            ids = concept_deck_ids(mw.col)
+        except Exception:
+            return
+        content.tree = badge_deck_tree(content.tree, ids, tr.ankigpt_deck_badge())
+
+    gui_hooks.deck_browser_will_render_content.append(on_render)
+
+
+def _install_help(mw: AnkiQt) -> None:
+    from aqt.ankigpt.help import show_guide
+
+    action = QAction(tr.ankigpt_menu_help(), mw)
+    qconnect(action.triggered, lambda: show_guide(mw))
+    mw.form.menuHelp.insertAction(mw.form.actionAbout, action)
+    if _menu is not None:
+        _menu.addSeparator()
+        _menu.addAction(action)
+
+
+def _refresh_notetype_css(mw: AnkiQt) -> None:
+    """Keep the concept notetype's styling current for existing collections."""
+    from aqt.ankigpt.concepts import NOTETYPE_NAME, ensure_notetype
+
+    try:
+        if mw.col and mw.col.models.by_name(NOTETYPE_NAME):
+            ensure_notetype(mw.col)
+    except Exception:
+        pass
 
 
 def create_concept_deck(mw: AnkiQt) -> None:

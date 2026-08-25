@@ -106,3 +106,27 @@ def test_deck_settings_roundtrip_and_inheritance(col: Collection) -> None:
     data[str(child)]["mode"] = "bogus"
     col.set_config(CONFIG_KEY, data)
     assert deck_settings(col, child).mode == "self"
+
+
+def test_notetype_css_is_refreshed_and_concept_decks_listed(col: Collection) -> None:
+    nt = ensure_notetype(col)
+    nt["css"] = "/* stale */"
+    col.models.update_dict(nt)
+    assert ensure_notetype(col)["css"] == concepts._CSS
+    assert concepts.concept_deck_ids(col) == set()
+    deck_id = deck_id_for_name(col, "Course")
+    create_concept_notes(col, deck_id, [ConceptCandidate("T", "S", [], [])])
+    assert concepts.concept_deck_ids(col) == {deck_id}
+
+
+def test_badge_deck_tree() -> None:
+    from aqt.ankigpt import badge_deck_tree
+
+    tree = (
+        """<a class="deck" href=# onclick="return pycmd('open:1')">Default</a>"""
+        """<a class="deck" href=# onclick="return pycmd('open:42')">Micro</a>"""
+    )
+    out = badge_deck_tree(tree, {42}, "AI")
+    assert "Micro <span" in out and ">AI</span></a>" in out
+    assert "Default</a>" in out and "Default <span" not in out
+    assert badge_deck_tree(tree, set(), "AI") == tree

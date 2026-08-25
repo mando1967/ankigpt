@@ -19,7 +19,7 @@ import json
 import random
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -70,6 +70,9 @@ class ActiveQuestion:
     mastery: MasteryInfo
     settings: DeckSettings
     render_output: TemplateRenderOutput
+    summary: str = ""
+    concept_points: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
     history_id: int | None = None
     user_answer: str | None = None
     choice: int | None = None
@@ -334,6 +337,9 @@ class ConceptReviewController:
             note_mod=note.mod,
             title=concepts.field_to_text(note[concepts.FIELD_TITLE]),
             mode=mode,
+            summary=concepts.field_to_text(note[concepts.FIELD_SUMMARY]),
+            concept_points=concepts.field_to_lines(note[concepts.FIELD_KEY_POINTS]),
+            sources=concepts.field_to_lines(note[concepts.FIELD_SOURCES]),
             question=question,
             mastery=mastery,
             settings=settings,
@@ -705,11 +711,33 @@ def _mode_name(mode: Mode) -> str:
     }.get(mode, mode)
 
 
-def _header(mode: Mode, mastery: MasteryInfo | None) -> str:
-    bits = [tr.ankigpt_generated_question(), _mode_name(mode)]
+def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
+    bits = []
+    if title:
+        bits.append(tr.ankigpt_concept_label(title=title))
+    bits += [tr.ankigpt_generated_question(), _mode_name(mode)]
     if mastery is not None:
         bits.append(tr.ankigpt_mastery_label(level=mastery.level))
     return f'<div class="ankigpt-header">{" &middot; ".join(html.escape(b) for b in bits)}</div>'
+
+
+def render_source_html(cur: ActiveQuestion) -> str:
+    """Collapsible 'From your notes' block: the concept the question came from."""
+    body = []
+    if cur.summary:
+        body.append(f"<p>{sanitize(cur.summary)}</p>")
+    if cur.concept_points:
+        items = "".join(f"<li>{sanitize(p)}</li>" for p in cur.concept_points)
+        body.append(f"<ul>{items}</ul>")
+    for source in cur.sources:
+        body.append(f"<blockquote>{sanitize(source)}</blockquote>")
+    if not body:
+        return ""
+    label = html.escape(tr.ankigpt_from_your_notes(title=cur.title))
+    return (
+        f'<details class="ankigpt-source" open><summary>{label}</summary>'
+        f'<div class="ankigpt-source-body">{"".join(body)}</div></details>'
+    )
 
 
 def render_question_html(
@@ -746,7 +774,7 @@ def _points_block(title: str, points: list[str]) -> str:
 
 def render_answer_html(cur: ActiveQuestion) -> str:
     q = cur.question
-    parts = [_header(cur.mode, cur.mastery), _question_block(q)]
+    parts = [_header(cur.mode, cur.mastery, cur.title), _question_block(q)]
     if cur.mode == "mcq":
         parts.append(_option_list(q, cur.choice, reveal=cur.graded))
     parts.append("<hr id=answer>")
@@ -782,6 +810,7 @@ def render_answer_html(cur: ActiveQuestion) -> str:
             f"<br>{sanitize(q.model_answer)}</div>"
         )
     parts.append(_points_block(tr.ankigpt_key_points(), q.key_points))
+    parts.append(render_source_html(cur))
     return "\n".join(parts)
 
 
@@ -790,5 +819,6 @@ __all__ = [
     "ConceptReviewController",
     "render_answer_html",
     "render_question_html",
+    "render_source_html",
     "sanitize",
 ]

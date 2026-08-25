@@ -107,3 +107,10 @@ ankigpt-progress-candidates = { $count } candidate concepts found so far
 ankigpt-progress-elapsed = Elapsed: { $seconds }s
 ankigpt-cancel = Cancel
 ankigpt-continue = Continue
+
+## Source concept, badges, help
+ankigpt-concept-label = Concept: { $title }
+ankigpt-from-your-notes = From your notes: { $title }
+ankigpt-deck-badge = AI
+ankigpt-menu-help = AnkiGPT Guide...
+ankigpt-help-title = AnkiGPT Guide

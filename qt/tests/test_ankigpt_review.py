@@ -171,7 +171,15 @@ def test_generation_flow_and_reapply(harness: Callable[..., Harness]) -> None:
     assert "[fake #1, new]" in card.question()
     assert h.controller.intercept_answer() is False  # self-grade mode
     assert h.controller.suggested_ease() is None
-    assert "Model answer" in card.answer()
+    answer = card.answer()
+    assert "Model answer" in answer
+    # the answer side names the concept and shows the notes it came from
+    title = card.note()["Title"]
+    assert f"Concept: {title}" in answer.replace("\u2068", "").replace("\u2069", "")
+    assert "ankigpt-source" in answer and "From your notes" in answer
+    assert card.note()["Summary"] in answer
+    # ... but the question side does not give the concept title away
+    assert "From your notes" not in card.question()
 
 
 def test_recent_questions_feed_the_prompt(harness: Callable[..., Harness]) -> None:

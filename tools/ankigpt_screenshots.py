@@ -184,6 +184,14 @@ def run() -> None:
     settings_dialog.close()
     assert deck_settings(col, deck_id).mode == "mcq"
 
+    # ---- 8. the in-app guide
+    from aqt.ankigpt.help import GuideDialog
+
+    guide = GuideDialog(mw)
+    guide.show()
+    shot(guide, "10-guide", 0.8)
+    guide.close()
+
     mw.unloadProfileAndExit()
     pump(lambda: aqt.mw is None or aqt.mw.col is None, "profile unload", 30)
 

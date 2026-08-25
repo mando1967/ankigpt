@@ -36,7 +36,9 @@ _AFMT = (
     '<div class="ankigpt-summary">{{Summary}}</div>\n'
     '<div class="ankigpt-keypoints">{{KeyPoints}}</div>'
 )
-_CSS = """.card {
+CSS_VERSION = 2
+_CSS = f"""/* ankigpt-css-v{CSS_VERSION} */
+.card {{
   font-family: arial;
   font-size: 20px;
   text-align: left;
@@ -44,29 +46,33 @@ _CSS = """.card {
   background-color: white;
   max-width: 48em;
   margin: 0 auto;
-}
-.ankigpt-title { font-size: 1.3em; font-weight: bold; text-align: center; }
-.ankigpt-keypoints { margin-top: 0.8em; }
-.ankigpt-keypoints li { margin-bottom: 0.3em; }
-.ankigpt-question { margin-bottom: 1em; }
-.ankigpt-banner { font-size: 0.8em; color: #888; margin-bottom: 0.6em; }
-.ankigpt-header { font-size: 0.75em; letter-spacing: 0.04em; text-transform: uppercase; color: #4a90d9; margin-bottom: 0.8em; }
-.ankigpt-feedback { border-left: 3px solid #4a90d9; padding-left: 0.6em; margin: 0.8em 0; }
-.ankigpt-score { font-weight: bold; }
-.ankigpt-options { list-style: none; padding: 0; }
-.ankigpt-options li { margin: 0.4em 0; }
-.ankigpt-options button {
+}}
+.ankigpt-title {{ font-size: 1.3em; font-weight: bold; text-align: center; }}
+.ankigpt-keypoints {{ margin-top: 0.8em; }}
+.ankigpt-keypoints li {{ margin-bottom: 0.3em; }}
+.ankigpt-question {{ margin-bottom: 1em; }}
+.ankigpt-banner {{ font-size: 0.8em; color: #888; margin-bottom: 0.6em; }}
+.ankigpt-source {{ margin-top: 1.2em; font-size: 0.9em; }}
+.ankigpt-source summary {{ cursor: pointer; color: #4a90d9; }}
+.ankigpt-source-body {{ margin-top: 0.5em; }}
+.ankigpt-source blockquote {{ border-left: 3px solid #bbb; margin: 0.5em 0; padding-left: 0.6em; color: #777; }}
+.ankigpt-header {{ font-size: 0.75em; letter-spacing: 0.04em; text-transform: uppercase; color: #4a90d9; margin-bottom: 0.8em; }}
+.ankigpt-feedback {{ border-left: 3px solid #4a90d9; padding-left: 0.6em; margin: 0.8em 0; }}
+.ankigpt-score {{ font-weight: bold; }}
+.ankigpt-options {{ list-style: none; padding: 0; }}
+.ankigpt-options li {{ margin: 0.4em 0; }}
+.ankigpt-options button {{
   width: 100%; text-align: left; padding: 0.5em 0.8em; font-size: 1em;
   border: 1px solid #bbb; border-radius: 6px; background: #f7f7f7; cursor: pointer;
-}
-.ankigpt-options button:hover { background: #e8eef7; }
-.ankigpt-option-correct { border-color: #3a3 !important; background: #e6f5e6 !important; }
-.ankigpt-option-wrong { border-color: #c33 !important; background: #f9e6e6 !important; }
-#typeans { width: 100%; box-sizing: border-box; font-size: 1em; font-family: inherit; padding: 0.5em; }
-.night_mode .card { color: #d7d7d7; background-color: #2f2f31; }
-.night_mode .ankigpt-options button { background: #3a3a3c; color: #ddd; border-color: #555; }
-.night_mode .ankigpt-option-correct { background: #24422a !important; }
-.night_mode .ankigpt-option-wrong { background: #4a2626 !important; }
+}}
+.ankigpt-options button:hover {{ background: #e8eef7; }}
+.ankigpt-option-correct {{ border-color: #3a3 !important; background: #e6f5e6 !important; }}
+.ankigpt-option-wrong {{ border-color: #c33 !important; background: #f9e6e6 !important; }}
+#typeans {{ width: 100%; box-sizing: border-box; font-size: 1em; font-family: inherit; padding: 0.5em; }}
+.night_mode .card {{ color: #d7d7d7; background-color: #2f2f31; }}
+.night_mode .ankigpt-options button {{ background: #3a3a3c; color: #ddd; border-color: #555; }}
+.night_mode .ankigpt-option-correct {{ background: #24422a !important; }}
+.night_mode .ankigpt-option-wrong {{ background: #4a2626 !important; }}
 """
 
 
@@ -74,9 +80,25 @@ def concept_notetype_id(col: Collection) -> NotetypeId | None:
     return col.models.id_for_name(NOTETYPE_NAME)
 
 
+def concept_deck_ids(col: Collection) -> set[int]:
+    """Ids of decks that hold at least one concept card."""
+    ntid = concept_notetype_id(col)
+    if ntid is None:
+        return set()
+    rows = col.db.list(
+        "select distinct did from cards where nid in (select id from notes where mid = ?)",
+        ntid,
+    )
+    return {int(r) for r in rows}
+
+
 def ensure_notetype(col: Collection) -> NotetypeDict:
     """Return the concept notetype, creating it if this collection lacks it."""
     if existing := col.models.by_name(NOTETYPE_NAME):
+        if existing.get("css") != _CSS:
+            existing["css"] = _CSS
+            col.models.update_dict(existing)
+            existing = col.models.by_name(NOTETYPE_NAME) or existing
         return existing
     mm = col.models
     nt = mm.new(NOTETYPE_NAME)
