@@ -23,7 +23,7 @@ import requests
 from aqt.ankigpt import prompts
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_TIMEOUT_SECS = 60
 FAKE_ENV_VAR = "ANKIGPT_FAKE_LLM"
 
