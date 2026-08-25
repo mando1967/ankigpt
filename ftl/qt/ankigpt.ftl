@@ -80,6 +80,8 @@ ankigpt-type-answer-hint = Type your answer, then press Enter (Shift+Enter for a
 ## Limits
 ankigpt-max-chars = Max characters read per document
 ankigpt-max-chars-tooltip = Hard cap on how much of each document is sent to the AI (roughly 4 characters per token). Text beyond this is ignored.
-ankigpt-sampled-files = Large documents were sampled to stay within { $limit } characters each (change in Preferences > Third Party Services):
+ankigpt-sampled-files = Large documents were read selectively to stay within { $limit } characters each (change in Preferences > Third Party Services):
     { $files }
-ankigpt-sampled-file = { $name }: { $total } characters, { $percent }% read across { $windows } sections
+ankigpt-sampled-file = { $name }: read { $read } of { $sections } sections ({ $percent }% of { $total } characters)
+ankigpt-planning = Planning what to read ({ $current } of { $total } documents)...
+ankigpt-gap-check = Checking for skipped sections...

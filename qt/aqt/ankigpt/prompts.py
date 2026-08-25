@@ -25,6 +25,7 @@ MODES: tuple[Mode, ...] = ("self", "typed", "mcq")
 CHUNK_MARKER = "=== DOCUMENT TEXT ==="
 CANDIDATES_MARKER = "=== CANDIDATE CONCEPTS (JSON) ==="
 RECENT_MARKER = "=== RECENTLY ASKED (avoid repeating) ==="
+SECTIONS_MARKER = "=== SECTIONS ==="
 WANT_RE = re.compile(r"Return (?:at most|exactly) (\d+) concepts")
 
 # ---------------------------------------------------------------------------
@@ -307,6 +308,25 @@ EXTRACT_SCHEMA = _obj(
     }
 )
 
+PLAN_SCHEMA = _obj(
+    {
+        "sections": {
+            "type": "array",
+            "items": _obj(
+                {"index": {"type": "integer"}, "priority": {"type": "integer"}}
+            ),
+        },
+        "rationale": {"type": "string"},
+    }
+)
+
+GAP_SCHEMA = _obj(
+    {
+        "sections": {"type": "array", "items": {"type": "integer"}},
+        "rationale": {"type": "string"},
+    }
+)
+
 MERGE_SCHEMA = _obj(
     {
         "concepts": {
@@ -481,7 +501,7 @@ def build_extract_prompt(
     note = ""
     if sampled:
         note = (
-            "\nNOTE: the document is large, so only evenly spaced excerpts of it are "
+            "\nNOTE: the document is large, so only selected sections of it are "
             "provided; '[...]' marks skipped material. Use the outline for context and "
             "extract only concepts that the excerpt actually explains.\n"
         )
@@ -493,6 +513,83 @@ Return at most {want} concepts.
 {chunk}
 """
     return _EXTRACT_SYSTEM, user
+
+
+_PLAN_SYSTEM = """You plan how to read a long document for spaced-repetition concept extraction under a strict reading budget.
+You see a skim of the document: one line per section with its index, position, length and the first words. You cannot read more than the budget allows, so choose the sections most likely to contain the ideas worth remembering, given the learner's instructions.
+
+Rules:
+- Return the sections to read as {"index", "priority"} with priority 5 (must read) down to 1 (nice to have). Omit sections that should not be read.
+- Prefer substantive teaching material: definitions, mechanisms, methods, worked examples, key results. Skip prefaces, acknowledgements, references, indexes, exercises-only lists, and administrative text.
+- Aim for a set whose total length is around the budget; include more sections than fit so lower priorities can be dropped.
+- Spread choices across the document when the instructions do not single out a part.
+"""
+
+
+def build_plan_prompt(
+    skim: str,
+    instructions: str,
+    doc_name: str,
+    total_chars: int,
+    budget_chars: int,
+    section_count: int,
+) -> tuple[str, str]:
+    user = f"""LEARNER'S INSTRUCTIONS: {instructions or "(none given)"}
+DOCUMENT: {doc_name} ({total_chars:,} characters, {section_count} sections)
+READING BUDGET: about {budget_chars:,} characters in total.
+
+{SECTIONS_MARKER}
+{skim}
+"""
+    return _PLAN_SYSTEM, user
+
+
+def parse_plan(data: dict[str, Any]) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    for item in data.get("sections", []):
+        try:
+            index = int(item.get("index"))
+            priority = int(item.get("priority", 1))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        out.append((index, max(1, min(5, priority))))
+    return out
+
+
+_GAP_SYSTEM = """You check whether important material was skipped while reading a long document under a budget.
+You see the titles of concepts already extracted, and a skim of the sections that were NOT read. Pick the unread sections most likely to contain important concepts that are missing, if any. It is fine to pick none.
+"""
+
+
+def build_gap_prompt(
+    unread_skim: str,
+    extracted_titles: list[str],
+    instructions: str,
+    doc_name: str,
+    remaining_chars: int,
+    max_sections: int,
+) -> tuple[str, str]:
+    user = f"""LEARNER'S INSTRUCTIONS: {instructions or "(none given)"}
+DOCUMENT: {doc_name}
+REMAINING BUDGET: about {remaining_chars:,} characters. Pick at most {max_sections} sections (by index), or none.
+
+CONCEPTS ALREADY EXTRACTED:
+{_bullets(extracted_titles)}
+
+{SECTIONS_MARKER}
+{unread_skim}
+"""
+    return _GAP_SYSTEM, user
+
+
+def parse_gaps(data: dict[str, Any]) -> list[int]:
+    out: list[int] = []
+    for item in data.get("sections", []):
+        try:
+            out.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 _MERGE_SYSTEM = """You curate a list of study concepts extracted from course material.

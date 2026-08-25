@@ -185,6 +185,10 @@ class FakeLLMClient:
             return self._question(user)
         if schema_name == "grade_answer":
             return self._grade(user)
+        if schema_name == "plan_reading":
+            return self._plan(user)
+        if schema_name == "find_gaps":
+            return {"sections": [], "rationale": "fake: nothing missing"}
         raise LLMError(f"fake client: unknown schema {schema_name}")
 
     @staticmethod
@@ -270,6 +274,19 @@ class FakeLLMClient:
                 "Option 1 restates the concept; the others contradict it."
             )
         return out
+
+    @staticmethod
+    def _plan(user: str) -> dict[str, Any]:
+        """Pick every other section, highest priority first, so tests can see
+        a spread that is not simply the head of the document."""
+        skim = user.split(prompts.SECTIONS_MARKER, 1)[-1]
+        indices = [int(m) for m in re.findall(r"^\[(\d+)\]", skim, re.MULTILINE)]
+        picks = [
+            {"index": i, "priority": 5 if n % 2 == 0 else 3}
+            for n, i in enumerate(indices)
+            if n % 2 == 0 or n == len(indices) - 1
+        ]
+        return {"sections": picks, "rationale": "fake plan"}
 
     def _grade(self, user: str) -> dict[str, Any]:
         answer = user.rsplit('"""', 2)[-2] if user.count('"""') >= 2 else ""

@@ -224,6 +224,10 @@ class CreateConceptDeckDialog(QDialog):
                     self._cancel_requested = True
                 if stage == "extract":
                     label = tr.ankigpt_extracting_chunk(current=str(i), total=n)
+                elif stage == "plan":
+                    label = tr.ankigpt_planning(current=str(i), total=n)
+                elif stage == "gap":
+                    label = tr.ankigpt_gap_check()
                 else:
                     label = tr.ankigpt_merging()
                 mw.progress.update(label=label, value=i, max=n)
@@ -234,19 +238,18 @@ class CreateConceptDeckDialog(QDialog):
             mw.taskman.run_on_main(
                 lambda: mw.progress.update(label=tr.ankigpt_reading_files())
             )
-            docs = [
-                extract.extract_text(path, max_chars=config.max_chars_per_file)
-                for path in files
-            ]
-            self._sampled = [d for d in docs if d.sampled]
-            return extract.extract_concepts(
+            docs = [extract.extract_text(path) for path in files]
+            result = extract.extract_concepts(
                 docs,
                 instructions,
                 target,
                 client,
                 progress=progress,
                 should_cancel=lambda: self._cancel_requested,
+                max_chars_per_file=config.max_chars_per_file,
             )
+            self._sampled = [d for d in docs if d.report and d.report.partial]
+            return result
 
         self.extract_btn.setEnabled(False)
         QueryOp(parent=self, op=op, success=self._on_extracted).failure(
@@ -275,10 +278,12 @@ class CreateConceptDeckDialog(QDialog):
                 tr.ankigpt_sampled_file(
                     name=d.name,
                     total=d.total_chars,
-                    percent=str(int(100 * d.coverage)),
-                    windows=str(d.windows),
+                    percent=str(int(100 * d.report.coverage)),
+                    read=str(d.report.sections_read),
+                    sections=str(d.report.sections_total),
                 )
                 for d in self._sampled
+                if d.report
             )
             tooltip(
                 tr.ankigpt_sampled_files(limit=f"{limit:,}", files=lines),

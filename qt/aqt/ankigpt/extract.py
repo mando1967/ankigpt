@@ -1,9 +1,24 @@
 # Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
-"""Document text extraction and the map/reduce concept extraction pipeline.
+"""Document reading and the concept extraction pipeline.
 
 Pure Python: runs on a background thread, no Qt or collection access.
+
+Large documents are read *agentically* under a hard per-file character
+budget:
+
+1. structure pass (free): split into sections at headings and build a skim
+   (title, position, length, first few hundred characters of each section);
+2. plan call: the model picks which sections to read, with priorities, given
+   the learner's instructions and the budget;
+3. extraction over the chosen sections (map stage);
+4. one bounded gap call: the model may ask for a few unread sections that
+   look important given what was extracted so far;
+5. merge/rank (reduce stage).
+
+Small documents skip 1-4 and are read whole. If the plan call fails, evenly
+spaced sampling across the document is used as a fallback.
 """
 
 from __future__ import annotations
@@ -13,7 +28,7 @@ import os
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from aqt.ankigpt import prompts
@@ -25,6 +40,15 @@ CHUNK_OVERLAP = 500
 MERGE_BATCH = 60
 DEFAULT_MAX_CHARS_PER_FILE = 150_000  # ~37k tokens, ~13 requests
 MAX_PER_CHUNK = 15
+
+SEGMENT_SEPARATOR = "\n\n[...]\n\n"
+OUTLINE_MAX_CHARS = 3_000
+SKIM_MAX_CHARS = 16_000
+PREVIEW_MAX_CHARS = 300
+MIN_SECTION_CHARS = 1_500
+MAX_SECTIONS = 150
+MIN_READ_CHARS = 600
+GAP_MAX_SECTIONS = 4
 
 
 class ExtractionError(Exception):
@@ -42,21 +66,51 @@ class JsonClient(Protocol):
 
 
 @dataclass
+class ReadReport:
+    """How much of a document was actually sent to the model."""
+
+    total_chars: int
+    chars_read: int
+    sections_total: int
+    sections_read: int
+    planned: bool = False  # model chose the sections
+    fallback: bool = False  # even sampling was used instead of a plan
+
+    @property
+    def partial(self) -> bool:
+        return self.chars_read < self.total_chars
+
+    @property
+    def coverage(self) -> float:
+        return min(1.0, self.chars_read / self.total_chars) if self.total_chars else 1.0
+
+
+@dataclass
 class Document:
     name: str
     text: str
     total_chars: int = 0
-    sampled: bool = False
-    windows: int = 1
     outline: str = ""
+    report: ReadReport | None = None
 
     def __post_init__(self) -> None:
         if not self.total_chars:
             self.total_chars = len(self.text)
+        if not self.outline:
+            self.outline = build_outline(self.text)
+
+
+@dataclass
+class Section:
+    index: int
+    title: str
+    start: int
+    end: int
+    text: str
 
     @property
-    def coverage(self) -> float:
-        return min(1.0, len(self.text) / self.total_chars) if self.total_chars else 1.0
+    def length(self) -> int:
+        return len(self.text)
 
 
 # ---------------------------------------------------------------------------
@@ -68,15 +122,8 @@ def is_supported(path: str) -> bool:
     return path.lower().endswith(SUPPORTED_EXTENSIONS)
 
 
-def extract_text(path: str, max_chars: int | None = None) -> Document:
-    """Read a document to plain text.
-
-    `max_chars` is a hard cap on how much of the document is sent to the
-    LLM (and therefore on how many tokens it can cost). Documents over the
-    cap are not cut off at the start: evenly spaced windows spanning the
-    whole document are used instead, and a heading outline scanned from the
-    full text is attached so the model still sees the overall structure.
-    """
+def extract_text(path: str) -> Document:
+    """Read a document to plain text (all of it; budgeting happens later)."""
     name = os.path.basename(path)
     lower = path.lower()
     if lower.endswith(".pdf"):
@@ -88,25 +135,45 @@ def extract_text(path: str, max_chars: int | None = None) -> Document:
             text = f.read()
     else:
         raise ExtractionError(f"unsupported file type: {name}")
-    text = _normalize(text)
-    total = len(text)
-    outline = build_outline(text)
-    if max_chars is not None and total > max_chars:
-        budget = max(0, max_chars - len(outline))
-        segments = sample_evenly(text, budget)
-        return Document(
-            name=name,
-            text=SEGMENT_SEPARATOR.join(segments),
-            total_chars=total,
-            sampled=True,
-            windows=len(segments),
-            outline=outline,
-        )
-    return Document(name=name, text=text, total_chars=total, outline=outline)
+    return Document(name=name, text=_normalize(text))
 
 
-SEGMENT_SEPARATOR = "\n\n[...]\n\n"
-OUTLINE_MAX_CHARS = 3_000
+def _pdf_text(path: str) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover - dependency present in builds
+        raise ExtractionError("PDF support requires the pypdf package") from exc
+    reader = PdfReader(path)
+    pages = []
+    for page in reader.pages:
+        pages.append(page.extract_text() or "")
+    return "\n\n".join(pages)
+
+
+def _docx_text(path: str) -> str:
+    try:
+        import docx  # type: ignore[import-untyped]
+    except ImportError as exc:  # pragma: no cover
+        raise ExtractionError("DOCX support requires the python-docx package") from exc
+    document = docx.Document(path)
+    parts = [p.text for p in document.paragraphs]
+    for table in document.tables:
+        for row in table.rows:
+            parts.append(" | ".join(cell.text for cell in row.cells))
+    return "\n\n".join(parts)
+
+
+def _normalize(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+# ---------------------------------------------------------------------------
+# Structure: headings, outline, sections, skim
+# ---------------------------------------------------------------------------
+
 _HEADING_RE = re.compile(
     r"^(?:#{1,6}\s+\S.*|(?:chapter|part|section|unit|lecture|week|module)\s+[\dIVXivx]+\b.*"
     r"|\d+(?:\.\d+)*\.?\s+[A-Z].*|[A-Z][A-Z0-9 ,:'&-]{3,})$",
@@ -130,6 +197,21 @@ def _looks_like_heading(line: str) -> bool:
     return True
 
 
+def _heading_title(raw: str) -> str:
+    return raw.strip().lstrip("#").strip()
+
+
+def _headings(text: str) -> list[tuple[int, str]]:
+    """(offset, title) for every heading-like line, in document order."""
+    out: list[tuple[int, str]] = []
+    pos = 0
+    for raw in text.split("\n"):
+        if _looks_like_heading(raw):
+            out.append((pos, _heading_title(raw)))
+        pos += len(raw) + 1
+    return out
+
+
 def build_outline(text: str, max_chars: int = OUTLINE_MAX_CHARS) -> str:
     """Cheap, LLM-free table of contents: heading-like lines from the whole
     document with their approximate position, capped at max_chars."""
@@ -137,23 +219,112 @@ def build_outline(text: str, max_chars: int = OUTLINE_MAX_CHARS) -> str:
         return ""
     lines: list[str] = []
     seen: set[str] = set()
-    pos = 0
     total = len(text)
-    for raw in text.split("\n"):
-        line = raw.strip().lstrip("#").strip()
-        if _looks_like_heading(raw) and line.lower() not in seen:
-            seen.add(line.lower())
-            lines.append(f"[{int(100 * pos / total):3d}%] {line}")
-        pos += len(raw) + 1
+    for pos, title in _headings(text):
+        if title.lower() in seen:
+            continue
+        seen.add(title.lower())
+        lines.append(f"[{int(100 * pos / total):3d}%] {title}")
     out = "\n".join(lines)
     if len(out) > max_chars:
         out = out[:max_chars].rsplit("\n", 1)[0]
     return out
 
 
+def split_sections(
+    text: str,
+    min_chars: int = MIN_SECTION_CHARS,
+    max_sections: int = MAX_SECTIONS,
+) -> list[Section]:
+    """Split a document into sections at headings.
+
+    Tiny sections are merged into their predecessor; documents without
+    usable headings get fixed-size pseudo-sections so planning still works.
+    """
+    if not text:
+        return []
+    bounds = [(pos, title) for pos, title in _headings(text)]
+    if len(bounds) < 2:
+        bounds = [
+            (start, f"Part {i + 1}")
+            for i, start in enumerate(range(0, len(text), CHUNK_CHARS))
+        ]
+    if bounds[0][0] != 0:
+        bounds.insert(0, (0, "Preamble"))
+
+    raw: list[tuple[str, int, int]] = []
+    for i, (start, title) in enumerate(bounds):
+        end = bounds[i + 1][0] if i + 1 < len(bounds) else len(text)
+        raw.append((title, start, end))
+
+    # merge tiny sections into the previous one
+    merged: list[tuple[str, int, int]] = []
+    for title, start, end in raw:
+        if merged and (end - start) < min_chars:
+            ptitle, pstart, _pend = merged[-1]
+            merged[-1] = (ptitle, pstart, end)
+        elif merged and (merged[-1][2] - merged[-1][1]) < min_chars:
+            ptitle, pstart, _pend = merged[-1]
+            merged[-1] = (f"{ptitle} / {title}", pstart, end)
+        else:
+            merged.append((title, start, end))
+
+    # cap the number of sections by grouping neighbours
+    if len(merged) > max_sections:
+        group = math.ceil(len(merged) / max_sections)
+        grouped: list[tuple[str, int, int]] = []
+        for i in range(0, len(merged), group):
+            block = merged[i : i + group]
+            title = (
+                block[0][0] if len(block) == 1 else f"{block[0][0]} … {block[-1][0]}"
+            )
+            grouped.append((title, block[0][1], block[-1][2]))
+        merged = grouped
+
+    return [
+        Section(
+            index=i, title=title, start=start, end=end, text=text[start:end].strip()
+        )
+        for i, (title, start, end) in enumerate(merged)
+    ]
+
+
+def _preview(section: Section, max_chars: int) -> str:
+    body = section.text
+    first_line_end = body.find("\n")
+    if first_line_end != -1 and _looks_like_heading(body[:first_line_end]):
+        body = body[first_line_end + 1 :]
+    body = re.sub(r"\s+", " ", body).strip()
+    if len(body) > max_chars:
+        body = body[:max_chars].rsplit(" ", 1)[0] + "…"
+    return body
+
+
+def build_skim(
+    sections: list[Section], total_chars: int, max_chars: int = SKIM_MAX_CHARS
+) -> str:
+    """One line per section: index, position, length and a short preview."""
+    if not sections:
+        return ""
+    per_section = max(80, min(PREVIEW_MAX_CHARS, max_chars // len(sections) - 70))
+    lines = []
+    for s in sections:
+        pct = int(100 * s.start / total_chars) if total_chars else 0
+        lines.append(
+            f"[{s.index}] ({pct}%, {s.length:,} chars) {s.title}: "
+            f"{_preview(s, per_section)}"
+        )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Budgeted reading
+# ---------------------------------------------------------------------------
+
+
 def sample_evenly(text: str, budget: int, window: int = CHUNK_CHARS) -> list[str]:
     """Pick evenly spaced windows (on paragraph boundaries) that together
-    stay within `budget` characters and span the whole document."""
+    stay within `budget` characters and span the whole text."""
     if budget <= 0 or not text:
         return []
     if len(text) <= budget:
@@ -188,36 +359,100 @@ def sample_evenly(text: str, budget: int, window: int = CHUNK_CHARS) -> list[str
     return segments
 
 
-def _pdf_text(path: str) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover - dependency present in builds
-        raise ExtractionError("PDF support requires the pypdf package") from exc
-    reader = PdfReader(path)
-    pages = []
-    for page in reader.pages:
-        pages.append(page.extract_text() or "")
-    return "\n\n".join(pages)
+@dataclass
+class ReadPlan:
+    """Sections to read (document order) with how many characters of each."""
+
+    picks: list[tuple[Section, int]] = field(default_factory=list)
+
+    @property
+    def chars(self) -> int:
+        return sum(take for _, take in self.picks)
+
+    def indices(self) -> set[int]:
+        return {s.index for s, _ in self.picks}
 
 
-def _docx_text(path: str) -> str:
-    try:
-        import docx  # type: ignore[import-untyped]
-    except ImportError as exc:  # pragma: no cover
-        raise ExtractionError("DOCX support requires the python-docx package") from exc
-    document = docx.Document(path)
-    parts = [p.text for p in document.paragraphs]
-    for table in document.tables:
-        for row in table.rows:
-            parts.append(" | ".join(cell.text for cell in row.cells))
-    return "\n\n".join(parts)
+def allocate_budget(
+    sections: list[Section],
+    priorities: list[tuple[int, int]],
+    budget: int,
+    min_read: int = MIN_READ_CHARS,
+) -> ReadPlan:
+    """Turn (index, priority) choices into a plan within `budget` chars.
+
+    Higher priority first; ties in document order. A section that does not
+    fit entirely is read partially (evenly sampled) if enough room remains.
+    """
+    by_index = {s.index: s for s in sections}
+    seen: set[int] = set()
+    ordered: list[tuple[int, Section]] = []
+    for index, priority in priorities:
+        section = by_index.get(index)
+        if section is None or index in seen:
+            continue
+        seen.add(index)
+        ordered.append((priority, section))
+    ordered.sort(key=lambda item: (-item[0], item[1].index))
+
+    remaining = budget
+    chosen: list[tuple[Section, int]] = []
+    for _priority, section in ordered:
+        if remaining < min_read:
+            break
+        take = min(section.length, remaining)
+        if take < min_read:
+            continue
+        chosen.append((section, take))
+        remaining -= take
+    chosen.sort(key=lambda item: item[0].index)
+    return ReadPlan(chosen)
 
 
-def _normalize(text: str) -> str:
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = re.sub(r"[ \t]+\n", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+def render_plan(plan: ReadPlan) -> str:
+    """The text to send for extraction: chosen sections, partial ones sampled."""
+    parts: list[str] = []
+    for section, take in plan.picks:
+        if take >= section.length:
+            parts.append(section.text)
+        else:
+            parts.extend(sample_evenly(section.text, take))
+    return SEGMENT_SEPARATOR.join(p for p in parts if p)
+
+
+def _plan_with_model(
+    doc: Document,
+    sections: list[Section],
+    instructions: str,
+    budget: int,
+    client: JsonClient,
+) -> ReadPlan:
+    skim = build_skim(sections, doc.total_chars)
+    system, user = prompts.build_plan_prompt(
+        skim, instructions, doc.name, doc.total_chars, budget, len(sections)
+    )
+    data = client.complete_json(system, user, "plan_reading", prompts.PLAN_SCHEMA)
+    priorities = prompts.parse_plan(data)
+    return allocate_budget(sections, priorities, budget)
+
+
+def _gap_sections(
+    doc: Document,
+    unread: list[Section],
+    extracted_titles: list[str],
+    instructions: str,
+    remaining: int,
+    client: JsonClient,
+) -> list[int]:
+    if not unread or remaining < MIN_READ_CHARS:
+        return []
+    skim = build_skim(unread, doc.total_chars, max_chars=SKIM_MAX_CHARS // 2)
+    system, user = prompts.build_gap_prompt(
+        skim, extracted_titles, instructions, doc.name, remaining, GAP_MAX_SECTIONS
+    )
+    data = client.complete_json(system, user, "find_gaps", prompts.GAP_SCHEMA)
+    valid = {s.index for s in unread}
+    return [i for i in prompts.parse_gaps(data) if i in valid][:GAP_MAX_SECTIONS]
 
 
 # ---------------------------------------------------------------------------
@@ -262,10 +497,22 @@ def suggest_target_count(total_chars: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Map / reduce
+# Pipeline
 # ---------------------------------------------------------------------------
 
 ProgressFn = Callable[[str, int, int], None]
+
+
+@dataclass
+class _DocState:
+    doc: Document
+    sections: list[Section]
+    read_indices: set[int]
+    budget_left: int
+    planned: bool
+    fallback: bool
+    chars_read: int
+    text: str = ""
 
 
 def extract_concepts(
@@ -276,7 +523,11 @@ def extract_concepts(
     progress: ProgressFn | None = None,
     should_cancel: Callable[[], bool] | None = None,
     workers: int = 4,
+    max_chars_per_file: int | None = None,
 ) -> list[ConceptCandidate]:
+    """Extract concepts from documents; `max_chars_per_file` is a hard cap on
+    the characters of each document sent to the model (skim included)."""
+
     def report(stage: str, i: int, n: int) -> None:
         if progress:
             progress(stage, i, n)
@@ -285,9 +536,145 @@ def extract_concepts(
         if should_cancel and should_cancel():
             raise Cancelled()
 
+    # ---- pass 1: decide what to read from each document
+    states: list[_DocState] = []
+    texts: list[tuple[Document, str]] = []
+    report("plan", 0, len(docs))
+    for n, doc in enumerate(docs, start=1):
+        check_cancel()
+        state = _read_document(doc, instructions, max_chars_per_file, client)
+        states.append(state)
+        if doc.report is not None and doc.report.chars_read:
+            texts.append((doc, _text_for(state)))
+        report("plan", n, len(docs))
+
+    # ---- pass 2: extraction over what was read
+    candidates = _extract_from_texts(
+        texts, instructions, target, client, workers, report, check_cancel
+    )
+
+    # ---- pass 3: one bounded gap check per partially read document
+    gap_texts: list[tuple[Document, str]] = []
+    partial = [s for s in states if s.planned and s.budget_left >= MIN_READ_CHARS]
+    if partial and candidates:
+        report("gap", 0, len(partial))
+        titles = [c.title for c in candidates]
+        for n, state in enumerate(partial, start=1):
+            check_cancel()
+            unread = [s for s in state.sections if s.index not in state.read_indices]
+            try:
+                wanted = _gap_sections(
+                    state.doc, unread, titles, instructions, state.budget_left, client
+                )
+            except Exception:
+                wanted = []
+            if wanted:
+                plan = allocate_budget(
+                    state.sections, [(i, 1) for i in wanted], state.budget_left
+                )
+                if plan.picks:
+                    state.read_indices |= plan.indices()
+                    state.budget_left -= plan.chars
+                    state.chars_read += plan.chars
+                    _update_report(state)
+                    gap_texts.append((state.doc, render_plan(plan)))
+            report("gap", n, len(partial))
+        if gap_texts:
+            candidates.extend(
+                _extract_from_texts(
+                    gap_texts,
+                    instructions,
+                    target,
+                    client,
+                    workers,
+                    report,
+                    check_cancel,
+                )
+            )
+
+    if not candidates:
+        return []
+    report("merge", 0, 1)
+    merged = _reduce(candidates, instructions, target, client, check_cancel)
+    report("merge", 1, 1)
+    return merged
+
+
+def _read_document(
+    doc: Document,
+    instructions: str,
+    max_chars: int | None,
+    client: JsonClient,
+) -> _DocState:
+    """Choose what to read from `doc` within the budget and fill doc.report."""
+    sections = split_sections(doc.text)
+    total = doc.total_chars
+    if max_chars is None or total <= max_chars:
+        doc.report = ReadReport(total, total, len(sections), len(sections))
+        return _DocState(
+            doc, sections, {s.index for s in sections}, 0, False, False, total, doc.text
+        )
+
+    # the skim and outline are sent too; they come out of the same budget
+    skim_cost = min(SKIM_MAX_CHARS, len(build_skim(sections, total))) + len(doc.outline)
+    budget = max(0, max_chars - skim_cost)
+    planned = fallback = False
+    try:
+        plan = _plan_with_model(doc, sections, instructions, budget, client)
+        planned = bool(plan.picks)
+    except Exception:
+        plan = ReadPlan()
+    if not plan.picks:
+        # no usable plan: fall back to even sampling across the document
+        fallback = True
+        segments = sample_evenly(doc.text, budget)
+        text = SEGMENT_SEPARATOR.join(segments)
+        doc.report = ReadReport(
+            total, len(text), len(sections), len(segments), planned=False, fallback=True
+        )
+        return _DocState(doc, sections, set(), 0, False, True, len(text), text)
+
+    state = _DocState(
+        doc,
+        sections,
+        plan.indices(),
+        budget - plan.chars,
+        planned,
+        fallback,
+        plan.chars,
+        render_plan(plan),
+    )
+    _update_report(state)
+    return state
+
+
+def _update_report(state: _DocState) -> None:
+    state.doc.report = ReadReport(
+        total_chars=state.doc.total_chars,
+        chars_read=min(state.chars_read, state.doc.total_chars),
+        sections_total=len(state.sections),
+        sections_read=len(state.read_indices),
+        planned=state.planned,
+        fallback=state.fallback,
+    )
+
+
+def _text_for(state: _DocState) -> str:
+    return state.text
+
+
+def _extract_from_texts(
+    texts: list[tuple[Document, str]],
+    instructions: str,
+    target: int,
+    client: JsonClient,
+    workers: int,
+    report: ProgressFn,
+    check_cancel: Callable[[], None],
+) -> list[ConceptCandidate]:
     chunks: list[tuple[Document, str]] = []
-    for doc in docs:
-        for chunk in chunk_text(doc.text):
+    for doc, text in texts:
+        for chunk in chunk_text(text):
             chunks.append((doc, chunk))
     if not chunks:
         return []
@@ -300,13 +687,14 @@ def extract_concepts(
     def run_chunk(item: tuple[Document, str]) -> list[ConceptCandidate]:
         check_cancel()
         doc, chunk = item
+        partial = doc.report is not None and doc.report.partial
         system, user = prompts.build_extract_prompt(
             chunk,
             instructions,
             want_for(chunk),
             doc.name,
             outline=doc.outline,
-            sampled=doc.sampled,
+            sampled=partial,
         )
         data = client.complete_json(
             system, user, "extract_concepts", prompts.EXTRACT_SCHEMA
@@ -320,13 +708,7 @@ def extract_concepts(
             candidates.extend(result)
             report("extract", i, len(chunks))
             check_cancel()
-
-    if not candidates:
-        return []
-    report("merge", 0, 1)
-    merged = _reduce(candidates, instructions, target, client, check_cancel)
-    report("merge", 1, 1)
-    return merged
+    return candidates
 
 
 def _merge_once(
