@@ -46,11 +46,17 @@ class Document:
     name: str
     text: str
     total_chars: int = 0
-    truncated: bool = False
+    sampled: bool = False
+    windows: int = 1
+    outline: str = ""
 
     def __post_init__(self) -> None:
         if not self.total_chars:
             self.total_chars = len(self.text)
+
+    @property
+    def coverage(self) -> float:
+        return min(1.0, len(self.text) / self.total_chars) if self.total_chars else 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +71,11 @@ def is_supported(path: str) -> bool:
 def extract_text(path: str, max_chars: int | None = None) -> Document:
     """Read a document to plain text.
 
-    `max_chars` is a hard cap on how much of the document is used (and
-    therefore on how many tokens it can cost); the rest is not read at all.
+    `max_chars` is a hard cap on how much of the document is sent to the
+    LLM (and therefore on how many tokens it can cost). Documents over the
+    cap are not cut off at the start: evenly spaced windows spanning the
+    whole document are used instead, and a heading outline scanned from the
+    full text is attached so the model still sees the overall structure.
     """
     name = os.path.basename(path)
     lower = path.lower()
@@ -81,11 +90,102 @@ def extract_text(path: str, max_chars: int | None = None) -> Document:
         raise ExtractionError(f"unsupported file type: {name}")
     text = _normalize(text)
     total = len(text)
-    truncated = False
+    outline = build_outline(text)
     if max_chars is not None and total > max_chars:
-        text = _normalize(text[:max_chars])
-        truncated = True
-    return Document(name=name, text=text, total_chars=total, truncated=truncated)
+        budget = max(0, max_chars - len(outline))
+        segments = sample_evenly(text, budget)
+        return Document(
+            name=name,
+            text=SEGMENT_SEPARATOR.join(segments),
+            total_chars=total,
+            sampled=True,
+            windows=len(segments),
+            outline=outline,
+        )
+    return Document(name=name, text=text, total_chars=total, outline=outline)
+
+
+SEGMENT_SEPARATOR = "\n\n[...]\n\n"
+OUTLINE_MAX_CHARS = 3_000
+_HEADING_RE = re.compile(
+    r"^(?:#{1,6}\s+\S.*|(?:chapter|part|section|unit|lecture|week|module)\s+[\dIVXivx]+\b.*"
+    r"|\d+(?:\.\d+)*\.?\s+[A-Z].*|[A-Z][A-Z0-9 ,:'&-]{3,})$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_heading(line: str) -> bool:
+    line = line.strip()
+    if not 3 <= len(line) <= 90 or line.endswith((".", ",", ";", ":")):
+        return False
+    if line.startswith("#"):
+        return True
+    m = _HEADING_RE.match(line)
+    if not m:
+        return False
+    # all-caps branch must really be mostly letters
+    if line.isupper():
+        letters = sum(c.isalpha() for c in line)
+        return letters >= len(line) * 0.6
+    return True
+
+
+def build_outline(text: str, max_chars: int = OUTLINE_MAX_CHARS) -> str:
+    """Cheap, LLM-free table of contents: heading-like lines from the whole
+    document with their approximate position, capped at max_chars."""
+    if not text:
+        return ""
+    lines: list[str] = []
+    seen: set[str] = set()
+    pos = 0
+    total = len(text)
+    for raw in text.split("\n"):
+        line = raw.strip().lstrip("#").strip()
+        if _looks_like_heading(raw) and line.lower() not in seen:
+            seen.add(line.lower())
+            lines.append(f"[{int(100 * pos / total):3d}%] {line}")
+        pos += len(raw) + 1
+    out = "\n".join(lines)
+    if len(out) > max_chars:
+        out = out[:max_chars].rsplit("\n", 1)[0]
+    return out
+
+
+def sample_evenly(text: str, budget: int, window: int = CHUNK_CHARS) -> list[str]:
+    """Pick evenly spaced windows (on paragraph boundaries) that together
+    stay within `budget` characters and span the whole document."""
+    if budget <= 0 or not text:
+        return []
+    if len(text) <= budget:
+        return [text]
+    # aim for at least four windows so the sample spans the document
+    window = max(1000, min(window, budget // 4))
+    count = max(1, budget // window)
+    window = budget // count
+    starts = [
+        int(i * (len(text) - window) / max(count - 1, 1)) if count > 1 else 0
+        for i in range(count)
+    ]
+    segments: list[str] = []
+    last_end = 0
+    for start in starts:
+        start = max(start, last_end)
+        if start >= len(text):
+            break
+        # snap forward to a paragraph boundary when one is near
+        boundary = text.find("\n\n", start, start + window // 2)
+        if boundary != -1 and start != 0:
+            start = boundary + 2
+        end = min(len(text), start + window)
+        if end < len(text):
+            cut = text.rfind("\n\n", start + window // 2, end)
+            if cut != -1:
+                end = cut
+        segment = text[start:end].strip()
+        if segment:
+            segments.append(segment)
+        last_end = end
+    return segments
 
 
 def _pdf_text(path: str) -> str:
@@ -185,10 +285,10 @@ def extract_concepts(
         if should_cancel and should_cancel():
             raise Cancelled()
 
-    chunks: list[tuple[str, str]] = []
+    chunks: list[tuple[Document, str]] = []
     for doc in docs:
         for chunk in chunk_text(doc.text):
-            chunks.append((doc.name, chunk))
+            chunks.append((doc, chunk))
     if not chunks:
         return []
     total_chars = sum(len(c) for _, c in chunks)
@@ -197,11 +297,16 @@ def extract_concepts(
         share = target * 1.5 * len(chunk) / max(total_chars, 1)
         return max(2, min(MAX_PER_CHUNK, math.ceil(share) + 2))
 
-    def run_chunk(item: tuple[str, str]) -> list[ConceptCandidate]:
+    def run_chunk(item: tuple[Document, str]) -> list[ConceptCandidate]:
         check_cancel()
-        doc_name, chunk = item
+        doc, chunk = item
         system, user = prompts.build_extract_prompt(
-            chunk, instructions, want_for(chunk), doc_name
+            chunk,
+            instructions,
+            want_for(chunk),
+            doc.name,
+            outline=doc.outline,
+            sampled=doc.sampled,
         )
         data = client.complete_json(
             system, user, "extract_concepts", prompts.EXTRACT_SCHEMA

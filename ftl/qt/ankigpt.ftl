@@ -80,5 +80,6 @@ ankigpt-type-answer-hint = Type your answer, then press Enter (Shift+Enter for a
 ## Limits
 ankigpt-max-chars = Max characters read per document
 ankigpt-max-chars-tooltip = Hard cap on how much of each document is sent to the AI (roughly 4 characters per token). Text beyond this is ignored.
-ankigpt-truncated-files = Only the first { $limit } characters of these documents were used (change the limit in Preferences > Third Party Services):
+ankigpt-sampled-files = Large documents were sampled to stay within { $limit } characters each (change in Preferences > Third Party Services):
     { $files }
+ankigpt-sampled-file = { $name }: { $total } characters, { $percent }% read across { $windows } sections

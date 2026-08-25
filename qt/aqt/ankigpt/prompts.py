@@ -465,12 +465,30 @@ Prefer concepts that match the learner's instructions. Skip boilerplate, adminis
 
 
 def build_extract_prompt(
-    chunk: str, instructions: str, want: int, doc_name: str
+    chunk: str,
+    instructions: str,
+    want: int,
+    doc_name: str,
+    outline: str = "",
+    sampled: bool = False,
 ) -> tuple[str, str]:
+    structure = ""
+    if outline:
+        structure = (
+            "\nDOCUMENT OUTLINE (headings found across the whole document, with "
+            f"approximate position):\n{outline}\n"
+        )
+    note = ""
+    if sampled:
+        note = (
+            "\nNOTE: the document is large, so only evenly spaced excerpts of it are "
+            "provided; '[...]' marks skipped material. Use the outline for context and "
+            "extract only concepts that the excerpt actually explains.\n"
+        )
     user = f"""LEARNER'S INSTRUCTIONS: {instructions or "(none given)"}
 DOCUMENT: {doc_name}
 Return at most {want} concepts.
-
+{structure}{note}
 {CHUNK_MARKER}
 {chunk}
 """

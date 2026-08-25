@@ -88,16 +88,60 @@ def test_suggest_target_count() -> None:
     assert extract.suggest_target_count(10_000_000) == 60
 
 
-def test_extract_text_respects_per_file_cap() -> None:
+def test_extract_text_samples_across_whole_file() -> None:
     with tempfile.TemporaryDirectory() as d:
-        path = os.path.join(d, "big.txt")
-        body = "\n\n".join(f"Paragraph {i} " + "word " * 50 for i in range(200))
+        path = os.path.join(d, "big.md")
+        parts = []
+        for i in range(60):
+            parts.append(f"# Section {i}\n\nParagraph {i} " + "word " * 120)
+        body = "\n\n".join(parts)
         with open(path, "w", encoding="utf-8") as f:
             f.write(body)
         full = extract.extract_text(path)
-        assert not full.truncated and full.total_chars == len(full.text)
-        capped = extract.extract_text(path, max_chars=5000)
-        assert capped.truncated
-        assert len(capped.text) <= 5000
+        assert not full.sampled and full.total_chars == len(full.text)
+        assert full.outline.splitlines()[0].endswith("Section 0")
+        assert "Section 59" in full.outline
+
+        capped = extract.extract_text(path, max_chars=8000)
+        assert capped.sampled
+        assert len(capped.text) <= 8000
         assert capped.total_chars == len(full.text)
-        assert capped.text.startswith("Paragraph 0")
+        assert capped.windows >= 3
+        # coverage spans the document, not just its head
+        assert "Paragraph 0 " in capped.text or "Section 0" in capped.text
+        assert any(f"Paragraph {i} " in capped.text for i in range(20, 40))
+        assert any(f"Paragraph {i} " in capped.text for i in range(54, 60))
+        assert (
+            capped.text.count(extract.SEGMENT_SEPARATOR.strip()) == capped.windows - 1
+        )
+        assert 0 < capped.coverage < 0.3
+
+
+def test_sample_evenly_and_outline_edge_cases() -> None:
+    assert extract.sample_evenly("", 100) == []
+    assert extract.sample_evenly("short", 100) == ["short"]
+    assert extract.sample_evenly("x" * 100, 0) == []
+    text = "\n\n".join(f"para {i} " + "w " * 200 for i in range(100))
+    segments = extract.sample_evenly(text, 6000, window=2000)
+    assert 2 <= len(segments) <= 4
+    assert sum(len(s) for s in segments) <= 6000
+    assert segments[0].startswith("para 0")
+    assert "para 9" in segments[-1]
+
+    outline = extract.build_outline(
+        "Intro line.\n\nCHAPTER 1\n\n## Supply\n\n1.2 Demand curves\n\nplain sentence here.\n"
+    )
+    lines = [l.split("] ", 1)[1] for l in outline.splitlines()]
+    assert lines == ["CHAPTER 1", "Supply", "1.2 Demand curves"]
+
+
+def test_extract_prompt_includes_outline_and_sampling_note() -> None:
+    from aqt.ankigpt import prompts
+
+    _system, user = prompts.build_extract_prompt(
+        "chunk", "", 5, "a.pdf", outline="[  0%] Intro", sampled=True
+    )
+    assert "DOCUMENT OUTLINE" in user and "[  0%] Intro" in user
+    assert "evenly spaced excerpts" in user
+    _system, user = prompts.build_extract_prompt("chunk", "", 5, "a.pdf")
+    assert "OUTLINE" not in user and "excerpts" not in user

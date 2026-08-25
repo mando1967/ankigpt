@@ -215,7 +215,7 @@ class CreateConceptDeckDialog(QDialog):
         instructions = self.instructions.toPlainText().strip()
         target = self.target.value()
         self._cancel_requested = False
-        self._truncated: list[tuple[str, int]] = []
+        self._sampled: list[extract.Document] = []
         mw = self.mw
 
         def progress(stage: str, i: int, n: int) -> None:
@@ -238,7 +238,7 @@ class CreateConceptDeckDialog(QDialog):
                 extract.extract_text(path, max_chars=config.max_chars_per_file)
                 for path in files
             ]
-            self._truncated = [(d.name, d.total_chars) for d in docs if d.truncated]
+            self._sampled = [d for d in docs if d.sampled]
             return extract.extract_concepts(
                 docs,
                 instructions,
@@ -269,13 +269,21 @@ class CreateConceptDeckDialog(QDialog):
         self.candidates = candidates
         self._fill_table(candidates)
         self.stack.setCurrentIndex(1)
-        if self._truncated:
+        if self._sampled:
             limit = llm_config(self.mw.pm).max_chars_per_file
-            names = "\n".join(
-                f"{name} ({total:,} chars)" for name, total in self._truncated
+            lines = "\n".join(
+                tr.ankigpt_sampled_file(
+                    name=d.name,
+                    total=d.total_chars,
+                    percent=str(int(100 * d.coverage)),
+                    windows=str(d.windows),
+                )
+                for d in self._sampled
             )
-            showWarning(
-                tr.ankigpt_truncated_files(limit=f"{limit:,}", files=names), self
+            tooltip(
+                tr.ankigpt_sampled_files(limit=f"{limit:,}", files=lines),
+                period=12000,
+                parent=self,
             )
 
     def _fill_table(self, candidates: Sequence[ConceptCandidate]) -> None:
