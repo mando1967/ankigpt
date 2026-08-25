@@ -207,6 +207,11 @@ class Store:
         )
         self.db.commit()
 
+    def drop_all_cached(self) -> None:
+        """Forget prefetched questions, e.g. after a grading-mode change."""
+        self.db.execute("DELETE FROM question_cache")
+        self.db.commit()
+
     def drop_cached(self, card_id: CardId) -> None:
         self.db.execute("DELETE FROM question_cache WHERE card_id = ?", (card_id,))
         self.db.commit()

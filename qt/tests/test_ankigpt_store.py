@@ -68,6 +68,9 @@ def test_cache_roundtrip_and_invalidation() -> None:
         assert store.get_cached(cid, 100) is None  # stale entries are dropped
         store.put_cached(cid, nid, 100, "solid", question(2))
         assert store.get_cached(cid, 100, max_age=-1) is None  # expired
+        store.put_cached(cid, nid, 100, "solid", question(3))
+        store.drop_all_cached()
+        assert store.get_cached(cid, 100) is None
         store.close()
 
 

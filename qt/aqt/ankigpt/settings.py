@@ -260,6 +260,13 @@ class DeckSettingsDialog(QDialog):
             context=self.context.toPlainText().strip(),
         )
         save_deck_settings(self.mw.col, self.deck_id, self.settings)
+        # questions prefetched under the old mode must not be reused
+        try:
+            from aqt.ankigpt import get_store
+
+            get_store().drop_all_cached()
+        except Exception:
+            pass
         saveGeom(self, "ankigptDeckSettings")
         super().accept()
 
