@@ -10,6 +10,7 @@ from copy import deepcopy
 
 import anki.lang
 import aqt
+import aqt.ankigpt.settings
 import aqt.forms
 import aqt.operations
 from anki.collection import OpChanges
@@ -70,6 +71,7 @@ class Preferences(QDialog):
         self.setup_profile()
         self.setup_global()
         self.setup_configurable_answer_keys()
+        aqt.ankigpt.settings.setup_preferences_tab(self)
         self.show()
 
     def _setup_webview(self) -> None:

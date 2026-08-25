@@ -113,6 +113,18 @@ when possible.
 in rslib, use error/mod.rs's AnkiError/Result and snafu. In our other Rust modules, prefer anyhow + additional context where appropriate. Unwrapping
 in build scripts/tests is fine.
 
+## AnkiGPT fork
+
+This checkout is the AnkiGPT fork (see README.md). All fork code lives in
+qt/aqt/ankigpt/ and ftl/qt/ankigpt.ftl; keep the diff against upstream Anki
+minimal (reviewer.py has four hook lines, main.py and preferences.py one call
+each). Run the fork's tests with `just test-py` or
+`PYTHONPATH=pylib:out/pylib:out/qt:out/qt/tools ANKI_TEST_MODE=1 out/pyenv/bin/pytest qt/tests/test_ankigpt_*.py`,
+and the offscreen end-to-end check with
+`ANKIGPT_FAKE_LLM=1 out/pyenv/bin/python tools/ankigpt_smoke.py /tmp/ankigpt-smoke`.
+The reviewer integration must never touch the collection from a background
+thread: build requests on the main thread, run only the LLM call in QueryOp.
+
 ## Individual preferences
 
 See @.claude/user.md

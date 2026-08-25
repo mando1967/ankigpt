@@ -19,6 +19,7 @@ from typing import Any, Literal, TypeVar, cast
 import anki
 import anki.sound
 import aqt
+import aqt.ankigpt
 import aqt.forms
 import aqt.progress
 import aqt.sound
@@ -249,6 +250,7 @@ class AnkiQt(QMainWindow):
         self.setupDeckBrowser()
         self.setupOverview()
         self.setupReviewer()
+        aqt.ankigpt.install(self)
 
     def finish_ui_setup(self) -> None:
         "Actions that are deferred until after add-on loading."

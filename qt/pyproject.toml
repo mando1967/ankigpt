@@ -25,6 +25,8 @@ dependencies = [
   "pyqt6>=6.2",
   "pyqt6-webengine>=6.2",
   "packaging",
+  "pypdf>=5.0",
+  "python-docx>=1.1",
   # anki dependency is added dynamically in hatch_build.py with exact version
 ]
 

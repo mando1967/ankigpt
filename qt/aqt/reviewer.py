@@ -31,6 +31,7 @@ from anki.tags import MARKED_TAG
 from anki.types import assert_exhaustive
 from anki.utils import is_mac
 from aqt import AnkiQt, gui_hooks
+from aqt.ankigpt.review import ConceptReviewController
 from aqt.browser.card_info import PreviousReviewerCardInfo, ReviewerCardInfo
 from aqt.deckoptions import confirm_deck_then_display_options
 from aqt.operations.card import set_card_flag
@@ -161,6 +162,7 @@ class Reviewer:
         self._v3: V3CardInfo | None = None
         self._state_mutation_key = str(random.randint(0, 2**64 - 1))
         self.bottom = BottomBar(mw, mw.bottomWeb)
+        self.ankigpt = ConceptReviewController(self)
         self._card_info = ReviewerCardInfo(self.mw)
         self._previous_card_info = PreviousReviewerCardInfo(self.mw)
         self._states_mutated = True
@@ -370,6 +372,8 @@ class Reviewer:
         return self.typeAnsFilter(self.mw.prepare_card_text_for_display(buf))
 
     def _showQuestion(self) -> None:
+        if self.ankigpt.intercept_question():
+            return
         self._reps += 1
         self.state = "question"
         self.typedAnswer: str | None = None
@@ -462,6 +466,8 @@ class Reviewer:
     def _showAnswer(self) -> None:
         if self.mw.state != "review":
             # showing resetRequired screen; ignore space
+            return
+        if self.ankigpt.intercept_answer():
             return
         self.state = "answer"
         c = self.card
@@ -883,8 +889,8 @@ timerStopped = false;
 <span class=review-count>{counts[2]}</span>
 """
 
-    def _defaultEase(self) -> Literal[2, 3]:
-        return 3
+    def _defaultEase(self) -> Literal[1, 2, 3, 4]:
+        return self.ankigpt.suggested_ease() or 3
 
     def _answerButtonList(self) -> tuple[tuple[int, str], ...]:
         button_count = self.mw.col.sched.answerButtons(self.card)
