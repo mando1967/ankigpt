@@ -74,7 +74,9 @@ def _resolved_mpv_command(args: list[str]) -> tuple[list[str], dict[str, str]]:
 
 def test_mpv_binary_runs():
     cmd, env = _resolved_mpv_command(["mpv"])
-    result = subprocess.run(cmd + ["--version"], env=env, capture_output=True)
+    result = subprocess.run(
+        cmd + ["--version"], check=False, env=env, capture_output=True
+    )
     assert result.returncode == 0, result.stderr.decode()
 
 
@@ -105,7 +107,7 @@ def test_mpv_can_play_generated_wav(generated_wav: Path):
         ]
     )
 
-    result = subprocess.run(cmd, env=env, capture_output=True, timeout=30)
+    result = subprocess.run(cmd, check=False, env=env, capture_output=True, timeout=30)
     assert result.returncode == 0, result.stderr.decode()
 
 

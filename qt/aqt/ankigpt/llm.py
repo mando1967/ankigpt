@@ -277,14 +277,14 @@ class FakeLLMClient:
 
     @staticmethod
     def _plan(user: str) -> dict[str, Any]:
-        """Pick every other section, highest priority first, so tests can see
-        a spread that is not simply the head of the document."""
+        """Pick every fourth section (plus the last), so tests can see a spread
+        that is not simply the head of the document and budget is left over."""
         skim = user.split(prompts.SECTIONS_MARKER, 1)[-1]
         indices = [int(m) for m in re.findall(r"^\[(\d+)\]", skim, re.MULTILINE)]
         picks = [
-            {"index": i, "priority": 5 if n % 2 == 0 else 3}
+            {"index": i, "priority": 5 if n % 8 == 0 else 3}
             for n, i in enumerate(indices)
-            if n % 2 == 0 or n == len(indices) - 1
+            if n % 4 == 0 or n == len(indices) - 1
         ]
         return {"sections": picks, "rationale": "fake plan"}
 

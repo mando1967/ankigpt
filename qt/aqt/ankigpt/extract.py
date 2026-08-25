@@ -257,17 +257,22 @@ def split_sections(
         end = bounds[i + 1][0] if i + 1 < len(bounds) else len(text)
         raw.append((title, start, end))
 
-    # merge tiny sections into the previous one
+    # group small sections: a section is absorbed into the previous group
+    # while either of them is under min_chars, but groups stop growing at
+    # 4 * min_chars so a run of short sections never collapses into one.
     merged: list[tuple[str, int, int]] = []
     for title, start, end in raw:
-        if merged and (end - start) < min_chars:
-            ptitle, pstart, _pend = merged[-1]
-            merged[-1] = (ptitle, pstart, end)
-        elif merged and (merged[-1][2] - merged[-1][1]) < min_chars:
-            ptitle, pstart, _pend = merged[-1]
-            merged[-1] = (f"{ptitle} / {title}", pstart, end)
-        else:
-            merged.append((title, start, end))
+        cur_len = end - start
+        if merged:
+            ptitle, pstart, pend = merged[-1]
+            prev_len = pend - pstart
+            if (
+                prev_len < min_chars or cur_len < min_chars
+            ) and prev_len < 4 * min_chars:
+                keep = ptitle if prev_len >= cur_len else title
+                merged[-1] = (keep, pstart, end)
+                continue
+        merged.append((title, start, end))
 
     # cap the number of sections by grouping neighbours
     if len(merged) > max_sections:

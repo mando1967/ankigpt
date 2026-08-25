@@ -118,7 +118,13 @@ def test_split_sections_headings_tiny_merge_and_fallback() -> None:
     text = "# A\n\n" + "a " * 800 + "\n\n# B\n\nshort\n\n# C\n\n" + "c " * 800
     sections = extract.split_sections(text, min_chars=100)
     assert [s.title for s in sections] == ["A", "C"]
-    assert "short" in sections[0].text
+    assert "short" in sections[1].text
+
+    # a run of short sections forms bounded groups, not one giant section
+    run = "\n\n".join(f"# S{i}\n\n" + "w " * 100 for i in range(40))
+    sections = extract.split_sections(run, min_chars=500)
+    assert 3 <= len(sections) <= 15
+    assert all(500 <= s.length <= 2200 for s in sections[:-1])
 
     # no headings: fixed-size pseudo sections
     plain = "plain words " * 5000
@@ -158,7 +164,7 @@ def test_skim_and_allocate_budget() -> None:
 
 def test_extract_concepts_plans_reading_under_budget() -> None:
     client = FakeLLMClient()
-    text = make_doc(40, 200)
+    text = make_doc(80, 200)  # ~80k chars, well over the budget
     doc = Document("course.md", text)
     budget = 45_000
     result = extract_concepts(
@@ -170,8 +176,8 @@ def test_extract_concepts_plans_reading_under_budget() -> None:
     assert schemas.count("find_gaps") == 1
     assert schemas.index("plan_reading") < schemas.index("extract_concepts")
     assert doc.report is not None and doc.report.planned and doc.report.partial
-    assert doc.report.sections_total == 40
-    assert 0 < doc.report.sections_read < 40
+    assert doc.report.sections_total >= 10
+    assert 0 < doc.report.sections_read < doc.report.sections_total
     # everything sent to the model for this document stays within the budget
     sent = sum(
         len(user.split(prompts.CHUNK_MARKER, 1)[-1])
@@ -179,7 +185,7 @@ def test_extract_concepts_plans_reading_under_budget() -> None:
         if name == "extract_concepts"
     )
     assert sent <= budget
-    # the fake planner picks every other section, so the read spans the doc
+    # the fake planner picks every fourth section, so the read spans the doc
     read_chunks = [
         user for name, _sys, user in client.calls if name == "extract_concepts"
     ]
