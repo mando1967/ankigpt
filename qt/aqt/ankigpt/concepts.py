@@ -62,7 +62,7 @@ _CSS = """.card {
 .ankigpt-options button:hover { background: #e8eef7; }
 .ankigpt-option-correct { border-color: #3a3 !important; background: #e6f5e6 !important; }
 .ankigpt-option-wrong { border-color: #c33 !important; background: #f9e6e6 !important; }
-#typeans { width: 100%; box-sizing: border-box; font-size: 1em; padding: 0.5em; }
+#typeans { width: 100%; box-sizing: border-box; font-size: 1em; font-family: inherit; padding: 0.5em; }
 .night_mode .card { color: #d7d7d7; background-color: #2f2f31; }
 .night_mode .ankigpt-options button { background: #3a3a3c; color: #ddd; border-color: #555; }
 .night_mode .ankigpt-option-correct { background: #24422a !important; }

@@ -226,7 +226,7 @@ class DeckSettingsDialog(QDialog):
 
         self.auto_submit = QCheckBox(tr.ankigpt_auto_submit())
         self.auto_submit.setChecked(self.settings.auto_submit)
-        form.addRow("", self.auto_submit)
+        form.addRow(self.auto_submit)
 
         self.delay = QDoubleSpinBox()
         self.delay.setRange(0.5, 30.0)
@@ -249,7 +249,7 @@ class DeckSettingsDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(buttons)
         self.setLayout(layout)
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(600)
         restoreGeom(self, "ankigptDeckSettings")
 
     def accept(self) -> None:
