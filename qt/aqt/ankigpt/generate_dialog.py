@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -58,6 +59,11 @@ class CreateConceptDeckDialog(QDialog):
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_input_page())
         self.stack.addWidget(self._build_preview_page())
+        self.stack.addWidget(self._build_progress_page())
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.setInterval(500)
+        qconnect(self._elapsed_timer.timeout, self._tick_elapsed)
+        self._started_at = 0.0
         layout = QVBoxLayout()
         layout.addWidget(self.stack)
         self.setLayout(layout)
@@ -151,6 +157,110 @@ class CreateConceptDeckDialog(QDialog):
         outer.addWidget(buttons)
         return page
 
+    def _build_progress_page(self) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        self.progress_title = QLabel(tr.ankigpt_progress_title())
+        font = self.progress_title.font()
+        font.setPointSize(font.pointSize() + 3)
+        font.setBold(True)
+        self.progress_title.setFont(font)
+        outer.addWidget(self.progress_title)
+
+        self.progress_stage = QLabel("")
+        outer.addWidget(self.progress_stage)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        outer.addWidget(self.progress_bar)
+
+        stats = QHBoxLayout()
+        self.progress_candidates = QLabel("")
+        self.progress_elapsed = QLabel("")
+        stats.addWidget(self.progress_candidates)
+        stats.addStretch()
+        stats.addWidget(self.progress_elapsed)
+        outer.addLayout(stats)
+
+        self.progress_log = QPlainTextEdit()
+        self.progress_log.setReadOnly(True)
+        self.progress_log.setMaximumBlockCount(500)
+        outer.addWidget(self.progress_log, 1)
+
+        buttons = QDialogButtonBox()
+        self.progress_back_btn = QPushButton(tr.ankigpt_back())
+        buttons.addButton(self.progress_back_btn, QDialogButtonBox.ButtonRole.ResetRole)
+        self.progress_cancel_btn = QPushButton(tr.ankigpt_cancel())
+        buttons.addButton(
+            self.progress_cancel_btn, QDialogButtonBox.ButtonRole.RejectRole
+        )
+        qconnect(self.progress_back_btn.clicked, lambda: self.stack.setCurrentIndex(0))
+        qconnect(self.progress_cancel_btn.clicked, self._cancel_extraction)
+        outer.addWidget(buttons)
+        return page
+
+    # ---------------------------------------------------------- progress
+
+    _STAGE_ORDER = ("plan", "extract", "gap", "merge", "done")
+
+    def _stage_title(self, stage: str) -> str:
+        return {
+            "read": tr.ankigpt_progress_reading(),
+            "plan": tr.ankigpt_progress_planning(),
+            "extract": tr.ankigpt_progress_extracting(),
+            "gap": tr.ankigpt_progress_gap(),
+            "merge": tr.ankigpt_progress_merging(),
+            "done": tr.ankigpt_progress_done(),
+        }.get(stage, stage)
+
+    def _start_progress(self) -> None:
+        self.progress_log.clear()
+        self.progress_bar.setRange(0, 0)
+        self.progress_stage.setText(self._stage_title("read"))
+        self.progress_candidates.setText("")
+        self.progress_elapsed.setText("")
+        self.progress_back_btn.setEnabled(False)
+        self.progress_cancel_btn.setEnabled(True)
+        self._started_at = time.monotonic()
+        self._elapsed_timer.start()
+        self.stack.setCurrentIndex(2)
+
+    def _tick_elapsed(self) -> None:
+        seconds = int(time.monotonic() - self._started_at)
+        self.progress_elapsed.setText(tr.ankigpt_progress_elapsed(seconds=str(seconds)))
+
+    def _log(self, message: str) -> None:
+        seconds = time.monotonic() - self._started_at
+        self.progress_log.appendPlainText(f"[{seconds:6.1f}s] {message}")
+
+    def _on_progress(self, event: extract.ProgressEvent) -> None:
+        if self.stack.currentIndex() != 2:
+            return
+        self.progress_stage.setText(self._stage_title(event.stage))
+        if event.total > 0:
+            self.progress_bar.setRange(0, event.total)
+            self.progress_bar.setValue(event.current)
+        else:
+            self.progress_bar.setRange(0, 0)
+        if event.candidates:
+            self.progress_candidates.setText(
+                tr.ankigpt_progress_candidates(count=event.candidates)
+            )
+        if event.message:
+            self._log(event.message)
+
+    def _finish_progress(self, status: str) -> None:
+        self._elapsed_timer.stop()
+        self._tick_elapsed()
+        self.progress_stage.setText(status)
+        self.progress_cancel_btn.setEnabled(False)
+        self.progress_back_btn.setEnabled(True)
+        self._log(status)
+
+    def _cancel_extraction(self) -> None:
+        self._cancel_requested = True
+        self.progress_cancel_btn.setEnabled(False)
+        self._log(tr.ankigpt_progress_cancelled())
+
     # ------------------------------------------------------------ actions
 
     def on_add_files(self) -> None:
@@ -217,28 +327,23 @@ class CreateConceptDeckDialog(QDialog):
         self._cancel_requested = False
         self._sampled: list[extract.Document] = []
         mw = self.mw
+        self._start_progress()
+        self._log(tr.ankigpt_reading_files())
 
-        def progress(stage: str, i: int, n: int) -> None:
-            def update() -> None:
-                if mw.progress.want_cancel():
-                    self._cancel_requested = True
-                if stage == "extract":
-                    label = tr.ankigpt_extracting_chunk(current=str(i), total=n)
-                elif stage == "plan":
-                    label = tr.ankigpt_planning(current=str(i), total=n)
-                elif stage == "gap":
-                    label = tr.ankigpt_gap_check()
-                else:
-                    label = tr.ankigpt_merging()
-                mw.progress.update(label=label, value=i, max=n)
+        def progress(event: extract.ProgressEvent) -> None:
+            mw.taskman.run_on_main(lambda: self._on_progress(event))
 
-            mw.taskman.run_on_main(update)
+        def log(message: str) -> None:
+            mw.taskman.run_on_main(lambda: self._log(message))
 
         def op(_col: Collection) -> list[ConceptCandidate]:
-            mw.taskman.run_on_main(
-                lambda: mw.progress.update(label=tr.ankigpt_reading_files())
-            )
-            docs = [extract.extract_text(path) for path in files]
+            docs = []
+            for path in files:
+                if self._cancel_requested:
+                    raise extract.Cancelled()
+                doc = extract.extract_text(path)
+                docs.append(doc)
+                log(f"{doc.name}: {doc.total_chars:,} characters")
             result = extract.extract_concepts(
                 docs,
                 instructions,
@@ -254,20 +359,23 @@ class CreateConceptDeckDialog(QDialog):
         self.extract_btn.setEnabled(False)
         QueryOp(parent=self, op=op, success=self._on_extracted).failure(
             self._on_extract_failed
-        ).with_progress(
-            tr.ankigpt_extracting()
         ).without_collection().run_in_background()
 
     def _on_extract_failed(self, exc: Exception) -> None:
         self.extract_btn.setEnabled(True)
         if isinstance(exc, extract.Cancelled):
+            self._finish_progress(tr.ankigpt_progress_cancelled())
+            self.stack.setCurrentIndex(0)
             return
+        self._finish_progress(f"{tr.ankigpt_progress_failed()}: {exc}")
         showWarning(tr.ankigpt_extraction_failed(error=str(exc)), self)
 
     def _on_extracted(self, candidates: list[ConceptCandidate]) -> None:
         self.extract_btn.setEnabled(True)
+        self._finish_progress(tr.ankigpt_progress_done())
         if not candidates:
             showWarning(tr.ankigpt_no_concepts_found(), self)
+            self.stack.setCurrentIndex(0)
             return
         self.candidates = candidates
         self._fill_table(candidates)

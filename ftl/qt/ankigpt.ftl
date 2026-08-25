@@ -85,3 +85,25 @@ ankigpt-sampled-files = Large documents were read selectively to stay within { $
 ankigpt-sampled-file = { $name }: read { $read } of { $sections } sections ({ $percent }% of { $total } characters)
 ankigpt-planning = Planning what to read ({ $current } of { $total } documents)...
 ankigpt-gap-check = Checking for skipped sections...
+
+## Prominence
+ankigpt-create-deck-button = AI Concept Deck
+ankigpt-concept-settings-button = Concept Settings
+ankigpt-overview-badge = AI concept deck: questions are generated for each concept when it comes up
+ankigpt-generated-question = AI-generated question
+ankigpt-mastery-label = mastery: { $level }
+
+## Extraction progress
+ankigpt-progress-title = Extracting concepts
+ankigpt-progress-reading = Reading documents
+ankigpt-progress-planning = Planning what to read
+ankigpt-progress-extracting = Extracting concepts
+ankigpt-progress-gap = Checking for skipped sections
+ankigpt-progress-merging = Merging and ranking
+ankigpt-progress-done = Done
+ankigpt-progress-cancelled = Cancelled
+ankigpt-progress-failed = Failed
+ankigpt-progress-candidates = { $count } candidate concepts found so far
+ankigpt-progress-elapsed = Elapsed: { $seconds }s
+ankigpt-cancel = Cancel
+ankigpt-continue = Continue

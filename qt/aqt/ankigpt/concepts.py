@@ -50,6 +50,7 @@ _CSS = """.card {
 .ankigpt-keypoints li { margin-bottom: 0.3em; }
 .ankigpt-question { margin-bottom: 1em; }
 .ankigpt-banner { font-size: 0.8em; color: #888; margin-bottom: 0.6em; }
+.ankigpt-header { font-size: 0.75em; letter-spacing: 0.04em; text-transform: uppercase; color: #4a90d9; margin-bottom: 0.8em; }
 .ankigpt-feedback { border-left: 3px solid #4a90d9; padding-left: 0.6em; margin: 0.8em 0; }
 .ankigpt-score { font-weight: bold; }
 .ankigpt-options { list-style: none; padding: 0; }

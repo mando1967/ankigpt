@@ -1492,7 +1492,7 @@ title="{}" {}>{}</button>""".format(
         m.actionFullScreen.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
 
     def updateTitleBar(self) -> None:
-        self.setWindowTitle("Anki")
+        self.setWindowTitle("AnkiGPT")
 
     # View
     ##########################################################################

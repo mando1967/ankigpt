@@ -62,18 +62,22 @@ def test_extract_concepts_map_reduce_with_fake_client() -> None:
         Document("a.md", paragraphs(40, 500)),
         Document("b.md", paragraphs(10, 500)),
     ]
-    progress: list[tuple[str, int, int]] = []
+    progress: list[extract.ProgressEvent] = []
     result = extract_concepts(
-        docs, "focus on topics", 8, client, progress=lambda *a: progress.append(a)
+        docs, "focus on topics", 8, client, progress=progress.append
     )
     assert len(result) == 8
     assert all(c.title and c.summary for c in result)
     schemas = [c[0] for c in client.calls]
     assert schemas.count("merge_concepts") == 1
     assert schemas.count("extract_concepts") >= 2
-    assert progress[0] == ("plan", 0, 2)
-    assert ("extract", 0, schemas.count("extract_concepts")) in progress
-    assert progress[-1] == ("merge", 1, 1)
+    assert (progress[0].stage, progress[0].current, progress[0].total) == ("plan", 0, 2)
+    extract_events = [e for e in progress if e.stage == "extract"]
+    assert extract_events[0].total == schemas.count("extract_concepts")
+    assert extract_events[-1].candidates > 0
+    assert "candidates" in extract_events[-1].message
+    assert progress[-1].stage == "done"
+    assert any(e.stage == "merge" and "concepts ready" in e.message for e in progress)
 
 
 def test_extract_concepts_cancel() -> None:

@@ -338,7 +338,7 @@ class ConceptReviewController:
             mastery=mastery,
             settings=settings,
             render_output=TemplateRenderOutput(
-                question_text=render_question_html(question, mode),
+                question_text=render_question_html(question, mode, mastery),
                 answer_text="",
                 question_av_tags=[],
                 answer_av_tags=[],
@@ -697,8 +697,25 @@ def _option_list(question: GeneratedQuestion, chosen: int | None, reveal: bool) 
     return f'<ul class="ankigpt-options">{"".join(items)}</ul>'
 
 
-def render_question_html(question: GeneratedQuestion, mode: Mode) -> str:
-    parts = [_question_block(question)]
+def _mode_name(mode: Mode) -> str:
+    return {
+        "self": tr.ankigpt_mode_self(),
+        "typed": tr.ankigpt_mode_typed(),
+        "mcq": tr.ankigpt_mode_mcq(),
+    }.get(mode, mode)
+
+
+def _header(mode: Mode, mastery: MasteryInfo | None) -> str:
+    bits = [tr.ankigpt_generated_question(), _mode_name(mode)]
+    if mastery is not None:
+        bits.append(tr.ankigpt_mastery_label(level=mastery.level))
+    return f'<div class="ankigpt-header">{" &middot; ".join(html.escape(b) for b in bits)}</div>'
+
+
+def render_question_html(
+    question: GeneratedQuestion, mode: Mode, mastery: MasteryInfo | None = None
+) -> str:
+    parts = [_header(mode, mastery), _question_block(question)]
     if mode == "typed":
         parts.append(
             '<textarea id="typeans" rows="4" onkeydown="'
@@ -729,7 +746,7 @@ def _points_block(title: str, points: list[str]) -> str:
 
 def render_answer_html(cur: ActiveQuestion) -> str:
     q = cur.question
-    parts = [_question_block(q)]
+    parts = [_header(cur.mode, cur.mastery), _question_block(q)]
     if cur.mode == "mcq":
         parts.append(_option_list(q, cur.choice, reveal=cur.graded))
     parts.append("<hr id=answer>")

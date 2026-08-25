@@ -505,7 +505,26 @@ def suggest_target_count(total_chars: int) -> int:
 # Pipeline
 # ---------------------------------------------------------------------------
 
-ProgressFn = Callable[[str, int, int], None]
+
+@dataclass
+class ProgressEvent:
+    """A progress update from the extraction pipeline.
+
+    stage: plan | extract | gap | merge | done
+    current/total: position within the stage
+    message: a human-readable line worth showing in a log
+    candidates: concept candidates found so far
+    """
+
+    stage: str
+    current: int
+    total: int
+    message: str = ""
+    candidates: int = 0
+
+
+ProgressFn = Callable[[ProgressEvent], None]
+ReportFn = Callable[[str, int, int, str], None]
 
 
 @dataclass
@@ -533,9 +552,15 @@ def extract_concepts(
     """Extract concepts from documents; `max_chars_per_file` is a hard cap on
     the characters of each document sent to the model (skim included)."""
 
-    def report(stage: str, i: int, n: int) -> None:
+    found = 0
+
+    def report(stage: str, i: int, n: int, message: str = "") -> None:
         if progress:
-            progress(stage, i, n)
+            progress(ProgressEvent(stage, i, n, message, found))
+
+    def on_found(count: int) -> None:
+        nonlocal found
+        found = count
 
     def check_cancel() -> None:
         if should_cancel and should_cancel():
@@ -551,11 +576,11 @@ def extract_concepts(
         states.append(state)
         if doc.report is not None and doc.report.chars_read:
             texts.append((doc, _text_for(state)))
-        report("plan", n, len(docs))
+        report("plan", n, len(docs), _describe_read(doc))
 
     # ---- pass 2: extraction over what was read
     candidates = _extract_from_texts(
-        texts, instructions, target, client, workers, report, check_cancel
+        texts, instructions, target, client, workers, report, check_cancel, on_found
     )
 
     # ---- pass 3: one bounded gap check per partially read document
@@ -573,6 +598,7 @@ def extract_concepts(
                 )
             except Exception:
                 wanted = []
+            message = f"{state.doc.name}: no skipped sections worth reading"
             if wanted:
                 plan = allocate_budget(
                     state.sections, [(i, 1) for i in wanted], state.budget_left
@@ -583,7 +609,9 @@ def extract_concepts(
                     state.chars_read += plan.chars
                     _update_report(state)
                     gap_texts.append((state.doc, render_plan(plan)))
-            report("gap", n, len(partial))
+                    names = ", ".join(s.title for s, _ in plan.picks)
+                    message = f"{state.doc.name}: also reading {names}"
+            report("gap", n, len(partial), message)
         if gap_texts:
             candidates.extend(
                 _extract_from_texts(
@@ -594,15 +622,33 @@ def extract_concepts(
                     workers,
                     report,
                     check_cancel,
+                    on_found,
+                    offset=len(candidates),
                 )
             )
 
     if not candidates:
         return []
-    report("merge", 0, 1)
+    report(
+        "merge", 0, 1, f"merging {len(candidates)} candidates into {target} concepts"
+    )
     merged = _reduce(candidates, instructions, target, client, check_cancel)
-    report("merge", 1, 1)
+    report("merge", 1, 1, f"{len(merged)} concepts ready")
+    report("done", 1, 1)
     return merged
+
+
+def _describe_read(doc: Document) -> str:
+    r = doc.report
+    if r is None:
+        return doc.name
+    if not r.partial:
+        return f"{doc.name}: {r.total_chars:,} characters, read in full"
+    how = "sampled evenly" if r.fallback else "planned"
+    return (
+        f"{doc.name}: {r.total_chars:,} characters in {r.sections_total} sections; "
+        f"reading {r.sections_read} ({int(100 * r.coverage)}%, {how})"
+    )
 
 
 def _read_document(
@@ -674,8 +720,10 @@ def _extract_from_texts(
     target: int,
     client: JsonClient,
     workers: int,
-    report: ProgressFn,
+    report: ReportFn,
     check_cancel: Callable[[], None],
+    on_found: Callable[[int], None] | None = None,
+    offset: int = 0,
 ) -> list[ConceptCandidate]:
     chunks: list[tuple[Document, str]] = []
     for doc, text in texts:
@@ -707,11 +755,20 @@ def _extract_from_texts(
         return prompts.parse_concepts(data)
 
     candidates: list[ConceptCandidate] = []
-    report("extract", 0, len(chunks))
+    report("extract", 0, len(chunks), f"{len(chunks)} chunks to read")
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         for i, result in enumerate(pool.map(run_chunk, chunks), start=1):
             candidates.extend(result)
-            report("extract", i, len(chunks))
+            if on_found:
+                on_found(offset + len(candidates))
+            doc, _chunk = chunks[i - 1]
+            report(
+                "extract",
+                i,
+                len(chunks),
+                f"{doc.name}: chunk {i}/{len(chunks)} gave {len(result)} candidates "
+                f"({offset + len(candidates)} so far)",
+            )
             check_cancel()
     return candidates
 
