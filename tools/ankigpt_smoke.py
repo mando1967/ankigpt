@@ -22,6 +22,7 @@ import sys
 import time
 import traceback
 from collections.abc import Callable
+from pathlib import Path
 
 os.environ["ANKIGPT_FAKE_LLM"] = "1"
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -44,7 +45,7 @@ def seed_base() -> None:
     """A brand-new base dir triggers a modal language dialog in aqt._run."""
     shutil.rmtree(BASE, ignore_errors=True)
     os.makedirs(BASE, exist_ok=True)
-    pm = ProfileManager(BASE)
+    pm = ProfileManager(Path(BASE))
     pm.setupMeta()
     pm.setLang("en_US")
     pm.db.close()

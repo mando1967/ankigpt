@@ -40,6 +40,7 @@ class LLMConfig:
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
     timeout_secs: int = DEFAULT_TIMEOUT_SECS
+    max_chars_per_file: int = 150_000
 
     @property
     def configured(self) -> bool:

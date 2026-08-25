@@ -86,3 +86,18 @@ def test_suggest_target_count() -> None:
     assert extract.suggest_target_count(0) == 5
     assert extract.suggest_target_count(100_000) == 25
     assert extract.suggest_target_count(10_000_000) == 60
+
+
+def test_extract_text_respects_per_file_cap() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "big.txt")
+        body = "\n\n".join(f"Paragraph {i} " + "word " * 50 for i in range(200))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(body)
+        full = extract.extract_text(path)
+        assert not full.truncated and full.total_chars == len(full.text)
+        capped = extract.extract_text(path, max_chars=5000)
+        assert capped.truncated
+        assert len(capped.text) <= 5000
+        assert capped.total_chars == len(full.text)
+        assert capped.text.startswith("Paragraph 0")

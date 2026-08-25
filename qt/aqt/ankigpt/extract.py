@@ -23,6 +23,7 @@ SUPPORTED_EXTENSIONS = (".pdf", ".txt", ".md", ".markdown", ".docx")
 CHUNK_CHARS = 12_000
 CHUNK_OVERLAP = 500
 MERGE_BATCH = 60
+DEFAULT_MAX_CHARS_PER_FILE = 150_000  # ~37k tokens, ~13 requests
 MAX_PER_CHUNK = 15
 
 
@@ -44,6 +45,12 @@ class JsonClient(Protocol):
 class Document:
     name: str
     text: str
+    total_chars: int = 0
+    truncated: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.total_chars:
+            self.total_chars = len(self.text)
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +62,12 @@ def is_supported(path: str) -> bool:
     return path.lower().endswith(SUPPORTED_EXTENSIONS)
 
 
-def extract_text(path: str) -> Document:
+def extract_text(path: str, max_chars: int | None = None) -> Document:
+    """Read a document to plain text.
+
+    `max_chars` is a hard cap on how much of the document is used (and
+    therefore on how many tokens it can cost); the rest is not read at all.
+    """
     name = os.path.basename(path)
     lower = path.lower()
     if lower.endswith(".pdf"):
@@ -67,7 +79,13 @@ def extract_text(path: str) -> Document:
             text = f.read()
     else:
         raise ExtractionError(f"unsupported file type: {name}")
-    return Document(name=name, text=_normalize(text))
+    text = _normalize(text)
+    total = len(text)
+    truncated = False
+    if max_chars is not None and total > max_chars:
+        text = _normalize(text[:max_chars])
+        truncated = True
+    return Document(name=name, text=text, total_chars=total, truncated=truncated)
 
 
 def _pdf_text(path: str) -> str:

@@ -76,3 +76,9 @@ ankigpt-correct = Correct
 ankigpt-incorrect = Incorrect
 ankigpt-score = Score: { $score }/100
 ankigpt-type-answer-hint = Type your answer, then press Enter (Shift+Enter for a new line).
+
+## Limits
+ankigpt-max-chars = Max characters read per document
+ankigpt-max-chars-tooltip = Hard cap on how much of each document is sent to the AI (roughly 4 characters per token). Text beyond this is ignored.
+ankigpt-truncated-files = Only the first { $limit } characters of these documents were used (change the limit in Preferences > Third Party Services):
+    { $files }

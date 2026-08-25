@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from anki.collection import Collection
 from anki.decks import DeckId
+from aqt.ankigpt.extract import DEFAULT_MAX_CHARS_PER_FILE
 from aqt.ankigpt.llm import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
@@ -35,6 +36,7 @@ _KEY_API_KEY = "ankigptApiKey"
 _KEY_BASE_URL = "ankigptBaseUrl"
 _KEY_MODEL = "ankigptModel"
 _KEY_TIMEOUT = "ankigptTimeoutSecs"
+_KEY_MAX_CHARS = "ankigptMaxCharsPerFile"
 
 
 def llm_config(pm: ProfileManager) -> LLMConfig:
@@ -47,6 +49,7 @@ def llm_config(pm: ProfileManager) -> LLMConfig:
         base_url=prof.get(_KEY_BASE_URL) or DEFAULT_BASE_URL,
         model=prof.get(_KEY_MODEL) or DEFAULT_MODEL,
         timeout_secs=int(prof.get(_KEY_TIMEOUT) or DEFAULT_TIMEOUT_SECS),
+        max_chars_per_file=int(prof.get(_KEY_MAX_CHARS) or DEFAULT_MAX_CHARS_PER_FILE),
     )
 
 
@@ -56,6 +59,7 @@ def set_llm_config(pm: ProfileManager, config: LLMConfig) -> None:
     pm.profile[_KEY_BASE_URL] = config.base_url
     pm.profile[_KEY_MODEL] = config.model
     pm.profile[_KEY_TIMEOUT] = config.timeout_secs
+    pm.profile[_KEY_MAX_CHARS] = config.max_chars_per_file
 
 
 def setup_preferences_tab(dialog: Preferences) -> None:
@@ -98,6 +102,15 @@ def setup_preferences_tab(dialog: Preferences) -> None:
     timeout.setValue(config.timeout_secs)
     qconnect(timeout.valueChanged, lambda v: _set_profile(pm, _KEY_TIMEOUT, int(v)))
     form.addRow(tr.ankigpt_timeout(), timeout)
+
+    max_chars = QSpinBox()
+    max_chars.setRange(10_000, 5_000_000)
+    max_chars.setSingleStep(10_000)
+    max_chars.setGroupSeparatorShown(True)
+    max_chars.setValue(config.max_chars_per_file)
+    max_chars.setToolTip(tr.ankigpt_max_chars_tooltip())
+    qconnect(max_chars.valueChanged, lambda v: _set_profile(pm, _KEY_MAX_CHARS, int(v)))
+    form.addRow(tr.ankigpt_max_chars(), max_chars)
 
     layout = tab.layout()
     assert layout is not None

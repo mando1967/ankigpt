@@ -186,13 +186,14 @@ class CreateConceptDeckDialog(QDialog):
 
     def _suggest_target(self) -> None:
         total = 0.0
+        limit = llm_config(self.mw.pm).max_chars_per_file
         for path in self.files:
             try:
                 if path.lower().endswith(".pdf"):
                     # rough estimate without parsing: ~2.5k chars per 4KB
-                    total += os.path.getsize(path) * 0.6
+                    total += min(os.path.getsize(path) * 0.6, limit)
                 else:
-                    total += os.path.getsize(path)
+                    total += min(os.path.getsize(path), limit)
             except OSError:
                 pass
         if total:
@@ -214,6 +215,7 @@ class CreateConceptDeckDialog(QDialog):
         instructions = self.instructions.toPlainText().strip()
         target = self.target.value()
         self._cancel_requested = False
+        self._truncated: list[tuple[str, int]] = []
         mw = self.mw
 
         def progress(stage: str, i: int, n: int) -> None:
@@ -232,7 +234,11 @@ class CreateConceptDeckDialog(QDialog):
             mw.taskman.run_on_main(
                 lambda: mw.progress.update(label=tr.ankigpt_reading_files())
             )
-            docs = [extract.extract_text(path) for path in files]
+            docs = [
+                extract.extract_text(path, max_chars=config.max_chars_per_file)
+                for path in files
+            ]
+            self._truncated = [(d.name, d.total_chars) for d in docs if d.truncated]
             return extract.extract_concepts(
                 docs,
                 instructions,
@@ -263,6 +269,14 @@ class CreateConceptDeckDialog(QDialog):
         self.candidates = candidates
         self._fill_table(candidates)
         self.stack.setCurrentIndex(1)
+        if self._truncated:
+            limit = llm_config(self.mw.pm).max_chars_per_file
+            names = "\n".join(
+                f"{name} ({total:,} chars)" for name, total in self._truncated
+            )
+            showWarning(
+                tr.ankigpt_truncated_files(limit=f"{limit:,}", files=names), self
+            )
 
     def _fill_table(self, candidates: Sequence[ConceptCandidate]) -> None:
         self.table.blockSignals(True)
