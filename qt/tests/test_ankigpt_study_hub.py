@@ -84,6 +84,8 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
     assert "Statics" in course and "Start studying" in course
     assert "ankigpt:study:10" in course
     assert "ankigpt:course-sources:10" in course
+    assert "Delete course" in course
+    assert "ankigpt:delete-course:10" in course
     assert "Card Library" in library and "What is a moment?" in library
     assert "ankigpt:route:note:200" in library
     assert "Edit note" in editor_note and "ankigpt:save-note" in editor_note

@@ -213,6 +213,11 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
                 return (True, None)
             show_sources(mw, deck_id)
             return (True, None)
+        if message.startswith("ankigpt:delete-course:") and isinstance(
+            context, DeckBrowser
+        ):
+            _delete_course_from_shell(mw, context, message)
+            return (True, None)
         if message.startswith("ankigpt:save-concept:") and isinstance(
             context, DeckBrowser
         ):
@@ -291,6 +296,37 @@ def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     set_current_deck(parent=mw, deck_id=deck_id).success(start).run_in_background(
         initiator=browser
     )
+
+
+def _delete_course_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
+    """Confirm and remove a course through Anki's undoable deck operation."""
+    from aqt.operations.deck import remove_decks
+    from aqt.utils import askUser
+
+    try:
+        deck_id = DeckId(int(message.rsplit(":", 1)[1]))
+    except ValueError:
+        return
+    deck_name = mw.col.decks.name_if_exists(deck_id)
+    if not deck_name:
+        return
+    if not askUser(
+        f'Delete the course “{deck_name}”?\n\n'
+        "Its cards and any subdecks will also be removed. You can undo this "
+        "immediately from the Edit menu.",
+        parent=mw,
+        defaultno=True,
+    ):
+        return
+
+    def done(_changes: object) -> None:
+        global _shell_route
+        _shell_route = "home"
+        browser.refresh()  # type: ignore[attr-defined]
+
+    remove_decks(parent=mw, deck_ids=[deck_id], deck_name=deck_name).success(
+        done
+    ).run_in_background(initiator=browser)
 
 
 def _shell_settings(mw: AnkiQt) -> dict[str, Any]:

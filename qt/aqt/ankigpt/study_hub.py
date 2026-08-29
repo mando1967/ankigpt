@@ -155,7 +155,8 @@ def _route_content(
             <section class="content-card"><div class="section-heading"><div><div class="hub-eyebrow">NEXT STEP</div><h2>Keep the momentum</h2></div></div>
             <p>Study with source-aware answers, or inspect and refine the concepts generated for this course.</p>
             <div class="hero-actions"><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts')">Browse concepts</button>
-            <button class="hub-secondary" onclick="pycmd('ankigpt:course-sources:{deck_id}')">Open source library</button></div></section></main>"""
+            <button class="hub-secondary" onclick="pycmd('ankigpt:course-sources:{deck_id}')">Open source library</button>
+            <button class="hub-danger" onclick="pycmd('ankigpt:delete-course:{deck_id}')">Delete course</button></div></section></main>"""
     if route.startswith("concept:"):
         try:
             note_id = int(route.split(":", 1)[1])
@@ -294,6 +295,7 @@ center > table { width:100%; max-width:none; }
 .hub-main { padding:30px; min-width:0; }.hub-hero { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; align-items:center; padding:30px; border-radius:15px; background:linear-gradient(120deg,#f8fbff,#edf4ff); overflow:hidden; }
 .hub-eyebrow { color:#2367e8; font-size:11px; font-weight:800; letter-spacing:.1em; }.hub-hero h1 { margin:7px 0 4px; font-size:32px; line-height:1.15; color:#10204d; }.hub-hero p { margin:0 0 22px; color:#5e6b82; font-size:15px; }
 .hero-actions { display:flex; gap:10px; flex-wrap:wrap; }.hub-primary,.hub-secondary { padding:11px 18px; border-radius:8px; font-weight:700; cursor:pointer; }.hub-primary { color:#fff; background:#2367e8; border:1px solid #2367e8; }.hub-primary:hover { background:#1955c6; }.hub-secondary { color:#24406d; background:#fff; border:1px solid #cfd9e8; }.hub-art { width:100%; max-height:190px; }
+.hub-danger { padding:11px 18px; color:#b42318; background:#fff; border:1px solid #f1b5b0; border-radius:8px; font-weight:700; cursor:pointer; }.hub-danger:hover { color:#fff; background:#b42318; border-color:#b42318; }
 .hub-section { margin-top:28px; }.section-heading { display:flex; align-items:end; justify-content:space-between; margin-bottom:11px; }.section-heading h2 { margin:4px 0 0; font-size:22px; color:#15234a; }.today { color:#718096; font-size:12px; }
 .deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
