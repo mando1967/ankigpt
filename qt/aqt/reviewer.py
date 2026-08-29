@@ -256,7 +256,7 @@ class Reviewer:
         self._card_info.set_card(self.card)
 
         if not self.card:
-            self.mw.moveToState("overview")
+            self.mw.moveToState("deckBrowser")
             return
 
         if self._reps is None:

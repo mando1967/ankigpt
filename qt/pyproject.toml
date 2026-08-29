@@ -16,6 +16,7 @@ dependencies = [
   "beautifulsoup4",
   "flask[async]",
   "jsonschema",
+  "keyring>=25.7",
   "requests",
   "send2trash",
   "waitress>=2.0.0",

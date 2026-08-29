@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 from anki.collection import Collection
 from anki.decks import DeckId
+from aqt.ankigpt.credentials import (
+    CredentialStorageError,
+    migrate_plaintext_api_key,
+    read_api_key,
+    save_api_key,
+)
 from aqt.ankigpt.extract import DEFAULT_MAX_CHARS_PER_FILE
 from aqt.ankigpt.llm import (
     DEFAULT_BASE_URL,
@@ -37,11 +43,17 @@ _KEY_BASE_URL = "ankigptBaseUrl"
 _KEY_MODEL = "ankigptModel"
 _KEY_TIMEOUT = "ankigptTimeoutSecs"
 _KEY_MAX_CHARS = "ankigptMaxCharsPerFile"
+_KEY_PROVIDER = "ankigptProvider"
 
 
 def llm_config(pm: ProfileManager) -> LLMConfig:
     prof = pm.profile or {}
-    api_key = prof.get(_KEY_API_KEY) or os.environ.get("OPENAI_API_KEY", "")
+    legacy_key = str(prof.get(_KEY_API_KEY) or "").strip()
+    try:
+        api_key = read_api_key(pm)
+    except CredentialStorageError:
+        api_key = ""
+    api_key = api_key or legacy_key or os.environ.get("OPENAI_API_KEY", "")
     if fake_mode_enabled():
         api_key = api_key or "fake"
     return LLMConfig(
@@ -55,7 +67,8 @@ def llm_config(pm: ProfileManager) -> LLMConfig:
 
 def set_llm_config(pm: ProfileManager, config: LLMConfig) -> None:
     assert pm.profile is not None
-    pm.profile[_KEY_API_KEY] = config.api_key
+    save_api_key(pm, config.api_key)
+    pm.profile.pop(_KEY_API_KEY, None)
     pm.profile[_KEY_BASE_URL] = config.base_url
     pm.profile[_KEY_MODEL] = config.model
     pm.profile[_KEY_TIMEOUT] = config.timeout_secs
@@ -69,54 +82,41 @@ def setup_preferences_tab(dialog: Preferences) -> None:
     normal accept path (mw.pm.save()) persists them.
     """
     pm = dialog.mw.pm
+    migrate_profile_credential(pm)
     tab = _third_party_tab(dialog)
     if tab is None:
         return
+    from aqt.ankigpt.ai_setup import AISetupWidget
+
     group = QGroupBox(tr.ankigpt_preferences_group())
-    form = QFormLayout()
-    group.setLayout(form)
-    config = llm_config(pm)
-
-    api_key = QLineEdit(pm.profile.get(_KEY_API_KEY, "") if pm.profile else "")
-    api_key.setEchoMode(QLineEdit.EchoMode.Password)
-    api_key.setPlaceholderText("sk-...")
-    qconnect(api_key.textChanged, lambda s: _set_profile(pm, _KEY_API_KEY, s.strip()))
-    form.addRow(tr.ankigpt_api_key(), api_key)
-
-    base_url = QLineEdit(config.base_url)
-    qconnect(
-        base_url.textChanged,
-        lambda s: _set_profile(pm, _KEY_BASE_URL, s.strip() or DEFAULT_BASE_URL),
-    )
-    form.addRow(tr.ankigpt_base_url(), base_url)
-
-    model = QLineEdit(config.model)
-    qconnect(
-        model.textChanged,
-        lambda s: _set_profile(pm, _KEY_MODEL, s.strip() or DEFAULT_MODEL),
-    )
-    form.addRow(tr.ankigpt_model(), model)
-
-    timeout = QSpinBox()
-    timeout.setRange(5, 600)
-    timeout.setValue(config.timeout_secs)
-    qconnect(timeout.valueChanged, lambda v: _set_profile(pm, _KEY_TIMEOUT, int(v)))
-    form.addRow(tr.ankigpt_timeout(), timeout)
-
-    max_chars = QSpinBox()
-    max_chars.setRange(10_000, 5_000_000)
-    max_chars.setSingleStep(10_000)
-    max_chars.setGroupSeparatorShown(True)
-    max_chars.setValue(config.max_chars_per_file)
-    max_chars.setToolTip(tr.ankigpt_max_chars_tooltip())
-    qconnect(max_chars.valueChanged, lambda v: _set_profile(pm, _KEY_MAX_CHARS, int(v)))
-    form.addRow(tr.ankigpt_max_chars(), max_chars)
+    group_layout = QVBoxLayout(group)
+    group_layout.addWidget(AISetupWidget(dialog))
 
     layout = tab.layout()
     assert layout is not None
     # insert above the trailing spacer
     index = max(layout.count() - 1, 0)
     layout.insertWidget(index, group)  # type: ignore[attr-defined]
+
+
+def provider_id(pm: ProfileManager) -> str:
+    from aqt.ankigpt.providers import PROVIDER_OPENAI
+
+    return str((pm.profile or {}).get(_KEY_PROVIDER) or PROVIDER_OPENAI)
+
+
+def set_provider_id(pm: ProfileManager, value: str) -> None:
+    assert pm.profile is not None
+    pm.profile[_KEY_PROVIDER] = value
+
+
+def migrate_profile_credential(pm: ProfileManager) -> str | None:
+    """Migrate legacy plaintext storage; return a safe error for the UI."""
+    try:
+        migrate_plaintext_api_key(pm, _KEY_API_KEY)
+        return None
+    except CredentialStorageError as exc:
+        return str(exc)
 
 
 def _set_profile(pm: ProfileManager, key: str, value: Any) -> None:

@@ -367,8 +367,10 @@ _QUESTION_SYSTEM = """You are a tutor generating one study question for spaced-r
 You are given a concept (title, summary, key points, and verbatim source excerpts from the learner's course material), the learner's current mastery of it, and questions they were asked recently.
 
 Rules:
-- Ground the question in the source material. Do not invent facts that contradict it.
-- Ask exactly ONE question. It must be answerable from the concept material alone.
+- Ground every factual premise and the expected answer in the supplied concept or retrieved passages. Never introduce outside facts, names, examples, formulas, or assumptions.
+- Ask exactly ONE question. It must be directly relevant to the course context and answerable from the supplied material alone.
+- If the requested difficulty would require unsupported facts, ask a simpler grounded question instead.
+- Treat the course context as a hard relevance constraint, including its priority topics, exclusions, learner level, and question style.
 - Do not repeat or trivially rephrase any recently asked question. Vary the angle.
 - Match the requested difficulty style.
 - "model_answer": a concise reference answer (2-5 sentences).
@@ -551,6 +553,7 @@ For each concept:
 - "source_excerpt": a verbatim quote (up to ~500 characters) from the text that best supports the concept.
 
 Prefer concepts that match the learner's instructions. Skip boilerplate, administrative text, and trivia. Do not duplicate concepts.
+The learner's course, level, priority topics, and exclusions are hard relevance constraints. A concept must be explicitly supported by the supplied document text; never add plausible subject knowledge from memory. If a passage is outside the requested scope or too fragmentary to teach accurately, return fewer concepts instead of guessing.
 """
 
 
@@ -669,6 +672,8 @@ You receive candidate concepts (possibly overlapping, from different parts of th
 - Rank by importance to the learner's instructions; drop the least important to hit the requested count.
 - Order the final list in a sensible learning sequence (foundational ideas first).
 - Keep titles specific; keep summaries 2-4 sentences.
+- Treat the learner's stated course, priorities, and exclusions as hard constraints. Drop off-topic candidates even if that means returning fewer than requested.
+- Preserve source support. Do not add facts that are absent from the candidate summaries, key points, and excerpts.
 """
 
 

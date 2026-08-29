@@ -309,6 +309,7 @@ def showInfo(
     else:
         icon = QMessageBox.Icon.Information
     mb = QMessageBox(parent_widget)
+    _apply_ankigpt_dialog_style(mb)
     if textFormat == "plain":
         mb.setTextFormat(Qt.TextFormat.PlainText)
     elif textFormat == "rich":
@@ -354,6 +355,7 @@ def showText(
     if not parent:
         parent = aqt.mw.app.activeWindow() or aqt.mw
     diag = QDialog(parent)
+    _apply_ankigpt_dialog_style(diag)
     diag.setWindowTitle(title)
     disable_help_button(diag)
     layout = QVBoxLayout(diag)
@@ -420,8 +422,6 @@ def askUser(
     "Show a yes/no question. Return true if yes."
     if not parent:
         parent = aqt.mw.app.activeWindow()
-    if not msgfunc:
-        msgfunc = QMessageBox.question
     sb = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
     if help:
         sb |= QMessageBox.StandardButton.Help
@@ -430,7 +430,13 @@ def askUser(
             default = QMessageBox.StandardButton.No
         else:
             default = QMessageBox.StandardButton.Yes
-        r = msgfunc(parent, title, text, sb, default)
+        if msgfunc:
+            r = msgfunc(parent, title, text, sb, default)
+        else:
+            box = QMessageBox(QMessageBox.Icon.Question, title, text, sb, parent)
+            box.setDefaultButton(default)
+            _apply_ankigpt_dialog_style(box)
+            r = QMessageBox.StandardButton(box.exec())
         if r == QMessageBox.StandardButton.Help:
             assert help is not None
             openHelp(help)
@@ -449,6 +455,7 @@ class ButtonedDialog(QMessageBox):
         title: str = "Anki",
     ):
         QMessageBox.__init__(self, parent)
+        _apply_ankigpt_dialog_style(self)
         self._buttons: list[QPushButton | None] = []
         self.setWindowTitle(title)
         self.help = help
@@ -501,6 +508,7 @@ class GetTextDialog(QDialog):
         minWidth: int = 400,
     ) -> None:
         QDialog.__init__(self, parent)
+        _apply_ankigpt_dialog_style(self)
         self.setWindowTitle(title)
         disable_help_button(self)
         self.question = question
@@ -590,6 +598,7 @@ def chooseList(
     if not parent:
         parent = aqt.mw.app.activeWindow()
     d = QDialog(parent)
+    _apply_ankigpt_dialog_style(d)
     disable_help_button(d)
     d.setWindowModality(Qt.WindowModality.WindowModal)
     l = QVBoxLayout()
@@ -605,6 +614,26 @@ def chooseList(
     l.addWidget(bb)
     d.exec()
     return c.currentRow()
+
+
+def _apply_ankigpt_dialog_style(widget: QWidget) -> None:
+    """Apply the shared AnkiGPT visual language to system-level Qt dialogs."""
+    widget.setStyleSheet(
+        """
+        QDialog, QMessageBox { background:#f8faff; }
+        QLabel { color:#263653; font-size:13px; }
+        QLineEdit, QPlainTextEdit, QTextEdit, QTextBrowser, QListWidget, QComboBox {
+            min-height:30px; padding:5px 9px; color:#1e2c48; background:white;
+            border:1px solid #cfd8e6; border-radius:7px;
+        }
+        QPushButton {
+            min-height:30px; padding:3px 13px; color:#34435f; background:white;
+            border:1px solid #d0d8e5; border-radius:7px;
+        }
+        QPushButton:hover { background:#edf2fa; border-color:#9eb3d7; }
+        QPushButton:default { color:white; background:#2367e8; border-color:#2367e8; font-weight:700; }
+        """
+    )
 
 
 def getTag(

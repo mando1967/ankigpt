@@ -30,7 +30,6 @@ from anki.buildinfo import version as version_str
 from anki.collection import (
     Collection,
     Config,
-    ExperimentFlag,
     GithubRelease,
     OpChanges,
     UndoStatus,
@@ -57,7 +56,6 @@ from aqt.legacy import install_pylib_legacy
 from aqt.mediasync import MediaSyncer
 from aqt.operations import QueryOp
 from aqt.operations.collection import redo, undo
-from aqt.operations.deck import set_current_deck
 from aqt.profiles import ProfileManager as ProfileManagerType
 from aqt.qt import *
 from aqt.qt import sip
@@ -74,7 +72,6 @@ from aqt.utils import (
     current_window,
     disallow_full_screen,
     getFile,
-    getOnlyText,
     openHelp,
     openLink,
     restoreGeom,
@@ -328,8 +325,9 @@ class AnkiQt(QMainWindow):
         self.pm.profile = None
         self.moveToState("profileManager")
         d = self.profileDiag = self.ProfileManager()
-        f = self.profileForm = aqt.forms.profiles.Ui_MainWindow()
-        f.setupUi(d)
+        from aqt.ankigpt.profile_ui import build_profile_window
+
+        f = self.profileForm = build_profile_window(d)
         qconnect(f.login.clicked, self.onOpenProfile)
         qconnect(f.profiles.itemDoubleClicked, self.onOpenProfile)
         qconnect(f.openBackup.clicked, self.onOpenBackup)
@@ -387,10 +385,14 @@ class AnkiQt(QMainWindow):
         return not checkInvalidFilename(name) and name != "addons21"
 
     def onAddProfile(self) -> None:
-        name = getOnlyText(tr.actions_name()).strip()
+        from aqt.ankigpt.profile_ui import prompt_profile_name, show_profile_message
+
+        name = prompt_profile_name(self.profileDiag, "Create a new profile")
         if name:
             if name in self.pm.profiles():
-                showWarning(tr.qt_misc_name_exists())
+                show_profile_message(
+                    self.profileDiag, "Profile already exists", tr.qt_misc_name_exists()
+                )
                 return
             if not self.profileNameOk(name):
                 return
@@ -399,13 +401,17 @@ class AnkiQt(QMainWindow):
             self.refreshProfilesList()
 
     def onRenameProfile(self) -> None:
-        name = getOnlyText(tr.actions_new_name(), default=self.pm.name).strip()
+        from aqt.ankigpt.profile_ui import prompt_profile_name, show_profile_message
+
+        name = prompt_profile_name(self.profileDiag, "Rename profile", self.pm.name)
         if not name:
             return
         if name == self.pm.name:
             return
         if name in self.pm.profiles():
-            showWarning(tr.qt_misc_name_exists())
+            show_profile_message(
+                self.profileDiag, "Profile already exists", tr.qt_misc_name_exists()
+            )
             return
         if not self.profileNameOk(name):
             return
@@ -413,16 +419,20 @@ class AnkiQt(QMainWindow):
         self.refreshProfilesList()
 
     def onRemProfile(self) -> None:
+        from aqt.ankigpt.profile_ui import (
+            confirm_profile_delete,
+            show_profile_message,
+        )
+
         profs = self.pm.profiles()
         if len(profs) < 2:
-            showWarning(tr.qt_misc_there_must_be_at_least_one())
+            show_profile_message(
+                self.profileDiag,
+                "Profile required",
+                tr.qt_misc_there_must_be_at_least_one(),
+            )
             return
-        # sure?
-        if not askUser(
-            tr.qt_misc_all_cards_notes_and_media_for2(name=self.pm.name),
-            msgfunc=QMessageBox.warning,
-            defaultno=True,
-        ):
+        if not confirm_profile_delete(self.profileDiag, self.pm.name):
             return
         self.pm.remove(self.pm.name)
         self.refreshProfilesList()
@@ -440,22 +450,34 @@ class AnkiQt(QMainWindow):
         """
         Actions that occur when a profile has loaded unsuccessfully
         """
-        showWarning(str(error))
+        from aqt.ankigpt.profile_ui import show_profile_message
+
+        show_profile_message(self, "Restore failed", str(error))
         if self.state != "profileManager":
             self.loadProfile()
 
     def onOpenBackup(self) -> None:
         def do_open(path: str) -> None:
-            if not askUser(
+            from aqt.ankigpt.profile_ui import confirm_action, show_profile_message
+
+            parent = self.profileDiag if self.state == "profileManager" else self
+            if not confirm_action(
+                parent,
+                "Restore backup",
+                "Replace this collection?",
                 tr.qt_misc_replace_your_collection_with_an_earlier2(
                     os.path.basename(path)
                 ),
-                msgfunc=QMessageBox.warning,
-                defaultno=True,
+                "Restore Backup",
+                danger=True,
             ):
                 return
 
-            showInfo(tr.qt_misc_automatic_syncing_and_backups_have_been())
+            show_profile_message(
+                parent,
+                "Restoring backup",
+                tr.qt_misc_automatic_syncing_and_backups_have_been(),
+            )
 
             # Collection is still loaded if called from main window, so we unload. This is already
             # unloaded if called from the ProfileManager window.
@@ -493,12 +515,22 @@ class AnkiQt(QMainWindow):
             self.progress.finish()
             problems = future.result()
             if not problems:
-                showInfo("Profiles can now be opened with an older version of Anki.")
+                from aqt.ankigpt.profile_ui import show_profile_message
+
+                show_profile_message(
+                    self.profileDiag,
+                    "Downgrade complete",
+                    "Profiles can now be opened with an older version of Anki.",
+                )
             else:
-                showWarning(
+                from aqt.ankigpt.profile_ui import show_profile_message
+
+                show_profile_message(
+                    self.profileDiag,
+                    "Downgrade incomplete",
                     "The following profiles could not be downgraded: {}".format(
                         ", ".join(problems)
-                    )
+                    ),
                 )
                 return
             self.profileDiag.close()
@@ -1241,11 +1273,13 @@ title="{}" {}>{}</button>""".format(
         self.stateShortcuts = []
 
     def onStudyKey(self) -> None:
-        if self.state == "overview":
-            self.col.startTimebox()
-            self.moveToState("review")
-        else:
-            self.moveToState("overview")
+        from aqt.ankigpt import show_shell_route
+
+        if self.state == "review":
+            show_shell_route(self, "home")
+            return
+        deck_id = int(self.col.decks.get_current_id())
+        show_shell_route(self, f"course:{deck_id}")
 
     # App exit
     ##########################################################################
@@ -1314,31 +1348,34 @@ title="{}" {}>{}</button>""".format(
         return aqt.dialogs.open(name, self, *args, **kwargs)
 
     def onAddCard(self) -> None:
-        from aqt.addcards import NewAddCards
+        from aqt.ankigpt import show_shell_route
 
-        experimental = self.col.experiment_enabled(ExperimentFlag.SVELTE_EDITOR)
-        add_cards = self._open_new_or_legacy_dialog("AddCards", experimental)
-        if isinstance(add_cards, NewAddCards):
-            add_cards.load_new_note()
+        show_shell_route(self, "add")
 
     def onBrowse(self) -> None:
-        aqt.dialogs.open("Browser", self, card=self.reviewer.card)
+        from aqt.ankigpt import show_shell_route
+
+        show_shell_route(self, "library")
 
     def onEditCurrent(self) -> None:
-        experimental = self.col.experiment_enabled(ExperimentFlag.SVELTE_EDITOR)
-        self._open_new_or_legacy_dialog("EditCurrent", experimental)
+        from aqt.ankigpt import show_shell_route
+
+        card = self.reviewer.card
+        show_shell_route(self, f"note:{int(card.nid)}" if card else "library")
 
     def onOverview(self) -> None:
-        self.moveToState("overview")
+        # AnkiGPT replaces the legacy deck overview with its course shell.
+        self.moveToState("deckBrowser")
 
     def onStats(self) -> None:
-        deck = self._selectedDeck()
-        if not deck:
-            return
-        self._open_new_or_legacy_dialog("DeckStats", True)
+        from aqt.ankigpt import show_shell_route
+
+        show_shell_route(self, "progress")
 
     def onPrefs(self) -> None:
-        aqt.dialogs.open("Preferences", self)
+        from aqt.ankigpt import show_shell_route
+
+        show_shell_route(self, "settings")
 
     def on_check_for_updates(self) -> None:
         from packaging.version import Version
@@ -1735,23 +1772,9 @@ title="{}" {}>{}</button>""".format(
         check_media_db(self)
 
     def onStudyDeck(self) -> None:
-        from aqt.studydeck import StudyDeck
+        from aqt.ankigpt import show_shell_route
 
-        def callback(ret: StudyDeck) -> None:
-            if not ret.name:
-                return
-            deck_id = self.col.decks.id(ret.name)
-            set_current_deck(parent=self, deck_id=deck_id).success(
-                lambda out: self.moveToState("overview")
-            ).run_in_background()
-
-        StudyDeck(
-            self,
-            parent=self,
-            dyn=True,
-            current=self.col.decks.current()["name"],
-            callback=callback,
-        )
+        show_shell_route(self, "home")
 
     def onEmptyCards(self) -> None:
         from aqt.emptycards import show_empty_cards

@@ -111,6 +111,8 @@ def test_question_prompt_contains_material_and_recent() -> None:
     assert "solid" in user
     assert "exactly 4 answer choices" in user
     assert "ONE question" in system
+    assert "outside facts" in system
+    assert "hard relevance constraint" in system
 
 
 def test_parse_question_validates_mcq() -> None:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from anki.collection import Collection, OpChanges
@@ -24,6 +24,7 @@ from aqt.ankigpt.settings import (
     mode_label,
     save_deck_settings,
 )
+from aqt.ankigpt.study_sources import CourseBrief, discover_sources, total_size
 from aqt.operations import CollectionOp, QueryOp
 from aqt.qt import *
 from aqt.utils import (
@@ -40,6 +41,39 @@ if TYPE_CHECKING:
     from aqt.main import AnkiQt
 
 
+class StudySourceList(QListWidget):
+    """Document list that accepts files and folders from the desktop."""
+
+    def __init__(self, on_drop: Callable[[list[str]], None]):
+        super().__init__()
+        self._on_drop = on_drop
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        if event and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        elif event:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent | None) -> None:
+        if event and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        elif event:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        if not event or not event.mimeData().hasUrls():
+            return
+        paths = [
+            url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()
+        ]
+        if paths:
+            self._on_drop(paths)
+            event.acceptProposedAction()
+
+
 class CreateConceptDeckDialog(QDialog):
     def __init__(self, mw: AnkiQt, parent: QWidget | None = None):
         super().__init__(parent or mw)
@@ -50,6 +84,7 @@ class CreateConceptDeckDialog(QDialog):
         self.setWindowTitle(tr.ankigpt_create_deck_title())
         disable_help_button(self)
         self._build_ui()
+        self._apply_style()
         restoreGeom(self, "ankigptCreateDeck")
         self.show()
 
@@ -67,28 +102,119 @@ class CreateConceptDeckDialog(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(self.stack)
         self.setLayout(layout)
+        self.resize(940, 760)
         self.setMinimumSize(640, 520)
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            """
+            QDialog { background: #f5f7fb; }
+            QWidget#ankigptCanvas { background: #f5f7fb; }
+            QLabel#ankigptTitle { font-size: 24px; font-weight: 700; }
+            QLabel#ankigptSubtitle { color: #667085; font-size: 13px; }
+            QLabel#ankigptStep {
+                color: #3157d5; background: #e8edff; border-radius: 9px;
+                padding: 4px 9px; font-weight: 700;
+            }
+            QGroupBox {
+                background: palette(base); font-weight: 600;
+                border: 1px solid #dfe3eb; border-radius: 12px;
+                margin-top: 18px; padding: 20px 12px 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin; left: 14px; padding: 1px 6px;
+                color: palette(text);
+            }
+            QListWidget, QLineEdit, QPlainTextEdit, QComboBox, QSpinBox {
+                border: 1px solid #cfd5df; border-radius: 7px; padding: 7px;
+                background: palette(base);
+            }
+            QListWidget:focus, QLineEdit:focus, QPlainTextEdit:focus,
+            QComboBox:focus, QSpinBox:focus { border: 1px solid #4f6bed; }
+            QPushButton {
+                min-height: 30px; padding: 3px 14px; border-radius: 7px;
+            }
+            QPushButton#ankigptPrimary {
+                color: white; background: #3157d5; border: 1px solid #3157d5;
+                font-weight: 600;
+            }
+            QPushButton#ankigptPrimary:hover { background: #2448bd; }
+            QTableWidget {
+                background: palette(base); border: 1px solid #dfe3eb;
+                border-radius: 10px; gridline-color: #e8eaf0;
+            }
+            """
+        )
+
+    def _add_page_heading(
+        self, layout: QVBoxLayout, step: str, title: str, subtitle: str
+    ) -> None:
+        step_label = QLabel(step)
+        step_label.setObjectName("ankigptStep")
+        title_label = QLabel(title)
+        title_label.setObjectName("ankigptTitle")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("ankigptSubtitle")
+        subtitle_label.setWordWrap(True)
+        layout.addWidget(step_label)
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
 
     def _build_input_page(self) -> QWidget:
         page = QWidget()
+        page.setObjectName("ankigptCanvas")
         outer = QVBoxLayout(page)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        content.setObjectName("ankigptCanvas")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(10, 8, 10, 12)
+        self._add_page_heading(
+            content_layout,
+            tr.ankigpt_step_materials(),
+            tr.ankigpt_create_course(),
+            tr.ankigpt_create_course_subtitle(),
+        )
 
-        files_group = QGroupBox(tr.ankigpt_documents())
-        files_layout = QHBoxLayout(files_group)
-        self.file_list = QListWidget()
+        files_group = QGroupBox(tr.ankigpt_study_materials())
+        files_layout = QVBoxLayout(files_group)
+        intro = QLabel(tr.ankigpt_study_materials_intro())
+        intro.setWordWrap(True)
+        files_layout.addWidget(intro)
+        self.file_list = StudySourceList(self._add_source_paths)
+        self.file_list.setToolTip(tr.ankigpt_drop_sources())
+        self.file_list.setMinimumHeight(140)
         files_layout.addWidget(self.file_list, 1)
-        btns = QVBoxLayout()
+        btns = QHBoxLayout()
         add_btn = QPushButton(tr.ankigpt_add_files())
         qconnect(add_btn.clicked, self.on_add_files)
+        folder_btn = QPushButton(tr.ankigpt_add_folder())
+        qconnect(folder_btn.clicked, self.on_add_folder)
         remove_btn = QPushButton(tr.ankigpt_remove_file())
         qconnect(remove_btn.clicked, self.on_remove_file)
+        clear_btn = QPushButton(tr.ankigpt_clear_files())
+        qconnect(clear_btn.clicked, self.on_clear_files)
         btns.addWidget(add_btn)
+        btns.addWidget(folder_btn)
         btns.addWidget(remove_btn)
-        btns.addStretch()
-        files_layout.addLayout(btns)
-        outer.addWidget(files_group, 1)
+        btns.addWidget(clear_btn)
+        source_row = QVBoxLayout()
+        source_row.addLayout(btns)
+        self.source_summary = QLabel(tr.ankigpt_no_study_materials())
+        self.source_summary.setWordWrap(True)
+        source_row.addWidget(self.source_summary)
+        files_layout.addLayout(source_row)
+        content_layout.addWidget(files_group)
 
-        form = QFormLayout()
+        course_group = QGroupBox(tr.ankigpt_course_details())
+        form = QFormLayout(course_group)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
         self.deck_name = QComboBox()
         self.deck_name.setEditable(True)
         for deck in self.mw.col.decks.all_names_and_ids(
@@ -98,10 +224,43 @@ class CreateConceptDeckDialog(QDialog):
         self.deck_name.setCurrentText("")
         form.addRow(tr.ankigpt_deck_name(), self.deck_name)
 
+        self.subject = QLineEdit()
+        self.subject.setPlaceholderText(tr.ankigpt_subject_placeholder())
+        form.addRow(tr.ankigpt_subject(), self.subject)
+
+        self.level = QComboBox()
+        for label in (
+            tr.ankigpt_level_introductory(),
+            tr.ankigpt_level_intermediate(),
+            tr.ankigpt_level_advanced(),
+        ):
+            self.level.addItem(label)
+        form.addRow(tr.ankigpt_learning_level(), self.level)
+
+        self.focus = QLineEdit()
+        self.focus.setPlaceholderText(tr.ankigpt_focus_placeholder())
+        form.addRow(tr.ankigpt_focus_topics(), self.focus)
+
+        self.exclusions = QLineEdit()
+        self.exclusions.setPlaceholderText(tr.ankigpt_exclusions_placeholder())
+        form.addRow(tr.ankigpt_exclusions(), self.exclusions)
+
+        self.question_style = QComboBox()
+        for label in (
+            tr.ankigpt_style_balanced(),
+            tr.ankigpt_style_core_knowledge(),
+            tr.ankigpt_style_applied(),
+            tr.ankigpt_style_exam(),
+        ):
+            self.question_style.addItem(label)
+        form.addRow(tr.ankigpt_question_style(), self.question_style)
+
         self.instructions = QPlainTextEdit()
-        self.instructions.setPlaceholderText(tr.ankigpt_instructions_placeholder())
-        self.instructions.setMaximumHeight(90)
-        form.addRow(tr.ankigpt_instructions(), self.instructions)
+        self.instructions.setPlaceholderText(
+            tr.ankigpt_additional_guidance_placeholder()
+        )
+        self.instructions.setMaximumHeight(70)
+        form.addRow(tr.ankigpt_additional_guidance(), self.instructions)
 
         self.target = QSpinBox()
         self.target.setRange(1, 200)
@@ -112,10 +271,14 @@ class CreateConceptDeckDialog(QDialog):
         for mode in DECK_MODES:
             self.mode.addItem(mode_label(mode), mode)
         form.addRow(tr.ankigpt_grading_mode(), self.mode)
-        outer.addLayout(form)
+        content_layout.addWidget(course_group)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
 
         buttons = QDialogButtonBox()
         self.extract_btn = QPushButton(tr.ankigpt_extract())
+        self.extract_btn.setObjectName("ankigptPrimary")
         self.extract_btn.setDefault(True)
         buttons.addButton(self.extract_btn, QDialogButtonBox.ButtonRole.AcceptRole)
         buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
@@ -126,7 +289,14 @@ class CreateConceptDeckDialog(QDialog):
 
     def _build_preview_page(self) -> QWidget:
         page = QWidget()
+        page.setObjectName("ankigptCanvas")
         outer = QVBoxLayout(page)
+        self._add_page_heading(
+            outer,
+            tr.ankigpt_step_concepts(),
+            tr.ankigpt_review_concepts(),
+            tr.ankigpt_review_concepts_subtitle(),
+        )
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(
             [
@@ -147,6 +317,7 @@ class CreateConceptDeckDialog(QDialog):
         back_btn = QPushButton(tr.ankigpt_back())
         buttons.addButton(back_btn, QDialogButtonBox.ButtonRole.ResetRole)
         self.create_btn = QPushButton(tr.ankigpt_create_notes(count=0))
+        self.create_btn.setObjectName("ankigptPrimary")
         self.create_btn.setDefault(True)
         buttons.addButton(self.create_btn, QDialogButtonBox.ButtonRole.AcceptRole)
         buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
@@ -275,24 +446,77 @@ class CreateConceptDeckDialog(QDialog):
         if not paths:
             return
         assert not isinstance(paths, str)
-        for path in paths:
-            if not extract.is_supported(path):
-                showWarning(
-                    tr.ankigpt_unsupported_file(name=os.path.basename(path)), self
-                )
-                continue
-            if path not in self.files:
+        self._add_source_paths(paths)
+
+    def on_add_folder(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, tr.ankigpt_add_folder(), "", QFileDialog.Option.ShowDirsOnly
+        )
+        if path:
+            self._add_source_paths([path])
+
+    def _add_source_paths(self, paths: Sequence[str]) -> None:
+        discovered = discover_sources(paths)
+        existing = {os.path.normcase(os.path.normpath(path)) for path in self.files}
+        added = 0
+        for path in discovered.files:
+            key = os.path.normcase(os.path.normpath(path))
+            if key not in existing:
+                existing.add(key)
                 self.files.append(path)
-                self.file_list.addItem(path)
-        self._suggest_target()
+                item = QListWidgetItem(os.path.basename(path))
+                item.setToolTip(path)
+                item.setData(Qt.ItemDataRole.UserRole, path)
+                self.file_list.addItem(item)
+                added += 1
+        skipped = len(discovered.unsupported)
+        if skipped or discovered.missing:
+            tooltip(
+                tr.ankigpt_sources_skipped(
+                    unsupported=skipped, missing=len(discovered.missing)
+                ),
+                parent=self,
+            )
+        if added:
+            self._suggest_target()
+        self._update_source_summary()
 
     def on_remove_file(self) -> None:
-        row = self.file_list.currentRow()
-        if row < 0:
-            return
-        self.file_list.takeItem(row)
-        del self.files[row]
+        rows = sorted(
+            {self.file_list.row(item) for item in self.file_list.selectedItems()},
+            reverse=True,
+        )
+        for row in rows:
+            self.file_list.takeItem(row)
+            del self.files[row]
         self._suggest_target()
+        self._update_source_summary()
+
+    def on_clear_files(self) -> None:
+        self.files.clear()
+        self.file_list.clear()
+        self._update_source_summary()
+
+    def _update_source_summary(self) -> None:
+        if not self.files:
+            self.source_summary.setText(tr.ankigpt_no_study_materials())
+            return
+        size = total_size(self.files)
+        self.source_summary.setText(
+            tr.ankigpt_study_material_summary(
+                count=len(self.files), size=f"{size / (1024 * 1024):.1f} MB"
+            )
+        )
+
+    def _course_instructions(self) -> str:
+        return CourseBrief(
+            subject=self.subject.text().strip(),
+            level=self.level.currentText(),
+            focus=self.focus.text().strip(),
+            exclusions=self.exclusions.text().strip(),
+            question_style=self.question_style.currentText(),
+            notes=self.instructions.toPlainText().strip(),
+        ).instructions()
 
     def _suggest_target(self) -> None:
         total = 0.0
@@ -322,7 +546,7 @@ class CreateConceptDeckDialog(QDialog):
             return
         client = make_client(config)
         files = list(self.files)
-        instructions = self.instructions.toPlainText().strip()
+        instructions = self._course_instructions()
         target = self.target.value()
         self._cancel_requested = False
         self._sampled: list[extract.Document] = []
@@ -452,7 +676,7 @@ class CreateConceptDeckDialog(QDialog):
             showWarning(tr.ankigpt_nothing_selected(), self)
             return
         deck_name = self.deck_name.currentText().strip()
-        instructions = self.instructions.toPlainText().strip()
+        instructions = self._course_instructions()
         mode = str(self.mode.currentData())
         mw = self.mw
 

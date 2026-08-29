@@ -16,6 +16,7 @@ every step passed.
 from __future__ import annotations
 
 import faulthandler
+import json
 import os
 import shutil
 import sys
@@ -23,6 +24,7 @@ import time
 import traceback
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import quote
 
 os.environ["ANKIGPT_FAKE_LLM"] = "1"
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -71,10 +73,64 @@ def run() -> None:
     col = mw.col
     step("profile loaded")
 
+    import aqt.ankigpt as ankigpt_shell
     from aqt.ankigpt import get_store
     from aqt.ankigpt.concepts import create_concept_notes, deck_id_for_name
     from aqt.ankigpt.prompts import ConceptCandidate
     from aqt.ankigpt.settings import DeckSettings, save_deck_settings
+
+    library_deck_id = col.decks.id("Library Smoke")
+    add_payload = quote(
+        json.dumps(
+            {
+                "deck_id": int(library_deck_id),
+                "front": "Modern shell front",
+                "back": "Modern shell back",
+            }
+        )
+    )
+    mw.web._onBridgeCmd(f"ankigpt:add-card:{add_payload}")
+    pump(
+        lambda: bool(col.find_notes('"Modern shell front"')),
+        "shell card creation",
+    )
+    normal_note_id = col.find_notes('"Modern shell front"')[0]
+    assert ankigpt_shell._shell_route == "library"
+    step("standard card created in shell")
+
+    save_payload = quote(
+        json.dumps(
+            {
+                "nid": int(normal_note_id),
+                "fields": {
+                    "Front": "Modern shell front edited",
+                    "Back": "Modern shell back edited",
+                },
+            }
+        )
+    )
+    mw.web._onBridgeCmd(f"ankigpt:save-note:{save_payload}")
+    pump(
+        lambda: "edited" in col.get_note(normal_note_id)["Front"],
+        "shell note save",
+    )
+    step("standard card edited in shell")
+
+    mw.onBrowse()
+    assert mw.state == "deckBrowser" and ankigpt_shell._shell_route == "library"
+    mw.onStats()
+    assert ankigpt_shell._shell_route == "progress"
+    mw.onPrefs()
+    assert ankigpt_shell._shell_route == "settings"
+    mw.onAddCard()
+    assert ankigpt_shell._shell_route == "add"
+    step("global actions stay inside unified shell")
+
+    empty_deck_id = col.decks.id("Empty Smoke")
+    mw.web._onBridgeCmd(f"ankigpt:study:{int(empty_deck_id)}")
+    pump(lambda: mw.state == "deckBrowser", "empty course return to shell")
+    assert mw.state != "overview"
+    step("empty study session returned to shell without Overview")
 
     deck_id = deck_id_for_name(col, "Smoke")
     create_concept_notes(

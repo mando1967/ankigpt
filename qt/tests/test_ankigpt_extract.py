@@ -249,3 +249,5 @@ def test_extract_prompt_includes_outline_and_sampling_note() -> None:
     assert "selected sections" in user
     _system, user = prompts.build_extract_prompt("chunk", "", 5, "a.pdf")
     assert "OUTLINE" not in user and "excerpts" not in user
+    assert "hard relevance constraints" in _system
+    assert "instead of guessing" in _system

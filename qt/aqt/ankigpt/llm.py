@@ -35,6 +35,13 @@ class LLMError(Exception):
 
 
 @dataclass(frozen=True)
+class ConnectionResult:
+    ok: bool
+    message: str
+    technical_details: str = ""
+
+
+@dataclass(frozen=True)
 class LLMConfig:
     api_key: str
     base_url: str = DEFAULT_BASE_URL
@@ -193,6 +200,8 @@ class FakeLLMClient:
             return {"sections": picks, "rationale": "fake lookup"}
         if schema_name == "find_gaps":
             return {"sections": [], "rationale": "fake: nothing missing"}
+        if schema_name == "test_connection":
+            return {"status": "ok"}
         raise LLMError(f"fake client: unknown schema {schema_name}")
 
     @staticmethod
@@ -336,3 +345,73 @@ def make_client(config: LLMConfig) -> LLMClient | FakeLLMClient:
     if fake_mode_enabled():
         return FakeLLMClient()
     return LLMClient(config)
+
+
+_TEST_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"status": {"type": "string", "enum": ["ok"]}},
+    "required": ["status"],
+    "additionalProperties": False,
+}
+
+
+def test_connection(config: LLMConfig) -> ConnectionResult:
+    """Exercise the same structured-output capability used while studying."""
+    try:
+        data = make_client(config).complete_json(
+            "Return the requested JSON and nothing else.",
+            'Return {"status":"ok"}.',
+            "test_connection",
+            _TEST_SCHEMA,
+        )
+        if data.get("status") != "ok":
+            raise LLMError("connection test returned an unexpected result")
+        return ConnectionResult(True, "Connected successfully.")
+    except Exception as exc:
+        return connection_error(exc, config.api_key)
+
+
+def connection_error(exc: Exception, secret: str = "") -> ConnectionResult:
+    """Translate service failures and ensure diagnostic text cannot reveal a key."""
+    status = exc.status if isinstance(exc, LLMError) else None
+    details = redact_secret(str(exc), secret)
+    lower = details.lower()
+    if status in (401, 403):
+        message = (
+            "We couldn't authenticate with this API key. Check that the complete key "
+            "was copied, is still active, and has access to the selected model."
+        )
+    elif status == 429:
+        message = (
+            "The service is temporarily limiting requests. Check API billing or quota, "
+            "then try again in a moment."
+        )
+    elif status is not None and status >= 500:
+        message = "The AI service is temporarily unavailable. Please try again shortly."
+    elif "timeout" in lower or "timed out" in lower:
+        message = (
+            "The connection timed out. Check your network or increase the timeout."
+        )
+    elif "network error" in lower or "connection" in lower:
+        message = "We couldn't reach the AI service. Check your network and base URL."
+    elif "json_schema" in lower or "structured" in lower:
+        message = "This model does not appear to support the structured responses AnkiGPT needs."
+    else:
+        message = "AnkiGPT couldn't verify this configuration."
+    return ConnectionResult(False, message, details)
+
+
+def redact_secret(text: str, secret: str) -> str:
+    out = text
+    value = secret.strip()
+    if value:
+        out = out.replace(value, "[REDACTED]")
+    # Cover common key shapes even if a downstream library partially echoes one.
+    out = re.sub(r"\b(?:sk|key)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", out)
+    out = re.sub(r"(?i)\bBearer\s+[^\s,;]+", "Bearer [REDACTED]", out)
+    out = re.sub(
+        r'(?i)(["\'](?:api[_-]?key|authorization)["\']\s*:\s*["\'])[^"\']+',
+        r"\1[REDACTED]",
+        out,
+    )
+    return out[:2000]

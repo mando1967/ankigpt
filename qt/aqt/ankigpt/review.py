@@ -414,6 +414,9 @@ class ConceptReviewController:
     def _take_over(self, card: Card) -> None:
         """Park the reviewer while a question is generated for `card`."""
         r = self.reviewer
+        self.mw.toolbarWeb.hide()
+        self.mw.bottomWeb.hide()
+        self.mw.form.menubar.hide()
         r.state = "transition"
         r._clear_auto_advance_timers()
         text = tr.ankigpt_generating()
@@ -442,7 +445,7 @@ class ConceptReviewController:
         def go() -> None:
             showWarning(message, parent=self.mw)
             if self.mw.state == "review":
-                self.mw.moveToState("overview")
+                self.mw.moveToState("deckBrowser")
 
         self.mw.progress.single_shot(10, go, False)
 
@@ -558,6 +561,7 @@ class ConceptReviewController:
     # ------------------------------------------------------------------
 
     def _register_hooks(self) -> None:
+        gui_hooks.card_will_show.append(self._on_card_will_show)
         gui_hooks.reviewer_did_show_question.append(self._on_show_question)
         gui_hooks.reviewer_did_show_answer.append(self._on_show_answer)
         gui_hooks.reviewer_did_answer_card.append(self._on_answer_card)
@@ -567,6 +571,7 @@ class ConceptReviewController:
         gui_hooks.state_shortcuts_will_change.append(self._on_state_shortcuts)
 
     def unregister_hooks(self) -> None:
+        gui_hooks.card_will_show.remove(self._on_card_will_show)
         gui_hooks.reviewer_did_show_question.remove(self._on_show_question)
         gui_hooks.reviewer_did_show_answer.remove(self._on_show_answer)
         gui_hooks.reviewer_did_answer_card.remove(self._on_answer_card)
@@ -576,10 +581,40 @@ class ConceptReviewController:
         gui_hooks.state_shortcuts_will_change.remove(self._on_state_shortcuts)
 
     def _on_show_question(self, card: Card) -> None:
+        self.mw.toolbarWeb.hide()
+        self.mw.bottomWeb.hide()
+        self.mw.form.menubar.hide()
         cur = self._current
         if cur is None or cur.card_id != card.id:
             return
         self._prefetch()
+
+    def _on_card_will_show(self, text: str, card: Card, kind: str) -> str:
+        """Give ordinary Anki cards the same modern, chrome-free study frame."""
+        if kind not in {"reviewQuestion", "reviewAnswer"} or self._is_concept(card):
+            return text
+        try:
+            deck_name = self.mw.col.decks.name(card.current_deck_id())
+        except Exception:
+            deck_name = "Study"
+        header = (
+            '<div class="ankigpt-study-top"><button type="button" '
+            "onclick=\"pycmd('ankigpt:review-home')\">← Study Hub</button>"
+            f'<div class="ankigpt-header">{html.escape(deck_name)}</div></div>'
+        )
+        if kind == "reviewQuestion":
+            actions = (
+                '<div class="ankigpt-study-actions"><button type="button" '
+                "onclick=\"pycmd('ans')\">Show answer</button></div>"
+            )
+        else:
+            actions = _rating_buttons(None)
+        return (
+            f"<style>{_UNIVERSAL_REVIEW_CSS}</style>"
+            f'<main class="ankigpt-study-card ankigpt-standard-card">'
+            f'{header}<section class="ankigpt-standard-content">{text}</section>'
+            f"{actions}</main>"
+        )
 
     def _on_show_answer(self, card: Card) -> None:
         cur = self._current
@@ -662,6 +697,17 @@ class ConceptReviewController:
     ) -> tuple[bool, Any]:
         if context is not self.reviewer:
             return handled
+        if message == "ankigpt:review-home":
+            self.mw.moveToState("deckBrowser")
+            return (True, None)
+        if message.startswith("ankigpt:rate:"):
+            try:
+                ease = int(message.rsplit(":", 1)[1])
+            except ValueError:
+                return (True, None)
+            if self.reviewer.state == "answer" and ease in (1, 2, 3, 4):
+                self.reviewer._answerCard(cast(Ease, ease))
+            return (True, None)
         if message.startswith(JS_SOURCE_PREFIX):
             self._open_source(message[len(JS_SOURCE_PREFIX) :])
             return (True, None)
@@ -693,7 +739,7 @@ class ConceptReviewController:
     def _on_state_shortcuts(
         self, state: str, shortcuts: list[tuple[str, Callable]]
     ) -> None:
-        if state != "review":
+        if state != "review" or self._current is None:
             return
         for ease in (1, 2, 3, 4):
             key = self.mw.pm.get_answer_key(ease) or str(ease)
@@ -740,6 +786,15 @@ def _default_store() -> Store:
 # ----------------------------------------------------------------------
 
 _ALLOWED_TAGS = ("b", "i", "em", "strong", "code", "br", "sub", "sup", "u")
+
+_UNIVERSAL_REVIEW_CSS = """
+html,body{min-height:100%;background:#eef3f9!important;color:#17274e}
+.ankigpt-study-card{box-sizing:border-box;width:min(880px,calc(100vw - 36px));margin:24px auto;padding:0 0 28px;overflow:hidden;background:#fff;border:1px solid #dce3ec;border-radius:16px;box-shadow:0 14px 38px rgba(31,54,92,.13);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:left}
+.ankigpt-study-top{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:17px 22px;background:#f7f9fc;border-bottom:1px solid #e3e8ef}.ankigpt-study-top button{padding:8px 11px;color:#2455b5;background:#fff;border:1px solid #cfd9e8;border-radius:8px;font-weight:700;cursor:pointer}.ankigpt-header{color:#5e6b82;font-size:12px;font-weight:750;letter-spacing:.04em;text-transform:uppercase}
+.ankigpt-standard-content{padding:42px 48px;min-height:220px;font-size:20px;line-height:1.55;text-align:center}.ankigpt-standard-content img{max-width:100%;height:auto}.ankigpt-study-actions{text-align:center}.ankigpt-study-actions button{padding:12px 25px;color:#fff;background:#2367e8;border:0;border-radius:9px;font-weight:750;cursor:pointer}
+.ankigpt-rating{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;padding:20px 24px 0;border-top:1px solid #edf0f4;color:#667085;font-size:12px}.ankigpt-rating button{min-width:100px;padding:10px 13px;color:#263653;background:#f7f9fc;border:1px solid #d7dfe9;border-radius:8px;font-weight:700;cursor:pointer}.ankigpt-rating button:hover{color:#fff;background:#2367e8;border-color:#2367e8}
+@media(max-width:640px){.ankigpt-standard-content{padding:30px 20px}.ankigpt-study-top{padding:14px}.ankigpt-header{max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+"""
 
 
 def sanitize(text: str) -> str:
@@ -793,7 +848,12 @@ def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
     bits += [tr.ankigpt_generated_question(), _mode_name(mode)]
     if mastery is not None:
         bits.append(tr.ankigpt_mastery_label(level=mastery.level))
-    return f'<div class="ankigpt-header">{" &middot; ".join(html.escape(b) for b in bits)}</div>'
+    details = " &middot; ".join(html.escape(b) for b in bits)
+    return (
+        '<div class="ankigpt-study-top"><button type="button" '
+        "onclick=\"pycmd('ankigpt:review-home')\">← Study Hub</button>"
+        f'<div class="ankigpt-header">{details}</div></div>'
+    )
 
 
 def _passage_html(index: int, passage: retrieve.Passage, used: bool) -> str:
@@ -853,7 +913,15 @@ def render_question_html(
         )
     elif mode == "mcq":
         parts.append(_option_list(question, None, reveal=False))
-    return "\n".join(parts)
+    if mode != "mcq":
+        label = (
+            tr.ankigpt_check_answer() if mode == "typed" else tr.studying_show_answer()
+        )
+        parts.append(
+            '<div class="ankigpt-study-actions"><button type="button" '
+            f"onclick=\"pycmd('ans')\">{html.escape(label)}</button></div>"
+        )
+    return f'<main class="ankigpt-study-card">{"".join(parts)}</main>'
 
 
 def _ease_label(ease: int) -> str:
@@ -870,6 +938,18 @@ def _points_block(title: str, points: list[str]) -> str:
         return ""
     items = "".join(f"<li>{sanitize(p)}</li>" for p in points)
     return f'<div class="ankigpt-keypoints"><b>{html.escape(title)}</b><ul>{items}</ul></div>'
+
+
+def _rating_buttons(suggested: int | None) -> str:
+    buttons = []
+    for ease in (1, 2, 3, 4):
+        star = "★ " if ease == suggested else ""
+        buttons.append(
+            f'<button type="button" class="ease-{ease}" '
+            f"onclick=\"pycmd('ankigpt:rate:{ease}')\">"
+            f"{star}{html.escape(_ease_label(ease))}</button>"
+        )
+    return f'<div class="ankigpt-rating"><div>How well did you know this?</div>{"".join(buttons)}</div>'
 
 
 def render_answer_html(cur: ActiveQuestion) -> str:
@@ -911,7 +991,8 @@ def render_answer_html(cur: ActiveQuestion) -> str:
         )
     parts.append(_points_block(tr.ankigpt_key_points(), q.key_points))
     parts.append(render_source_html(cur))
-    return "\n".join(parts)
+    parts.append(_rating_buttons(cur.grade.ease if cur.grade else None))
+    return f'<main class="ankigpt-study-card answer">{"".join(parts)}</main>'
 
 
 __all__ = [

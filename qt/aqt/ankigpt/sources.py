@@ -33,35 +33,62 @@ class SourceViewerDialog(QDialog):
         self.highlights = highlights or []
         self.setWindowTitle(tr.ankigpt_sources_title())
         disable_help_button(self)
+        self.setObjectName("ankigptSourceWindow")
 
-        top = QHBoxLayout()
+        heading = QLabel(tr.ankigpt_sources_title())
+        heading.setObjectName("ankigptSourceTitle")
+        subtitle = QLabel(tr.ankigpt_source_viewer_subtitle())
+        subtitle.setObjectName("ankigptSourceSubtitle")
+        subtitle.setWordWrap(True)
+
+        sidebar = QFrame()
+        sidebar.setObjectName("ankigptSourceSidebar")
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_label = QLabel(tr.ankigpt_source_documents())
+        sidebar_label.setObjectName("ankigptSourceSection")
+        sidebar_layout.addWidget(sidebar_label)
         self.picker = QComboBox()
         for doc in documents:
             self.picker.addItem(doc.name, doc.id)
-        top.addWidget(QLabel(tr.ankigpt_documents()))
-        top.addWidget(self.picker, 1)
+        sidebar_layout.addWidget(self.picker)
+        self.info = QLabel("")
+        self.info.setObjectName("ankigptSourceInfo")
+        self.info.setWordWrap(True)
+        sidebar_layout.addWidget(self.info)
         self.open_btn = QPushButton(tr.ankigpt_open_original())
         qconnect(self.open_btn.clicked, self.open_original)
-        top.addWidget(self.open_btn)
+        sidebar_layout.addWidget(self.open_btn)
         self.next_btn = QPushButton(tr.ankigpt_next_highlight())
+        self.next_btn.setObjectName("ankigptSourcePrimary")
         qconnect(self.next_btn.clicked, self.next_highlight)
-        top.addWidget(self.next_btn)
+        sidebar_layout.addWidget(self.next_btn)
+        sidebar_layout.addStretch()
 
-        self.info = QLabel("")
-        self.info.setWordWrap(True)
         self.browser = QTextBrowser()
+        self.browser.setObjectName("ankigptSourceBrowser")
         self.browser.setOpenExternalLinks(False)
+
+        splitter = QSplitter()
+        splitter.addWidget(sidebar)
+        splitter.addWidget(self.browser)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([245, 755])
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         qconnect(buttons.rejected, self.reject)
 
         layout = QVBoxLayout()
-        layout.addLayout(top)
-        layout.addWidget(self.info)
-        layout.addWidget(self.browser, 1)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.addWidget(heading)
+        layout.addWidget(subtitle)
+        layout.addSpacing(8)
+        layout.addWidget(splitter, 1)
         layout.addWidget(buttons)
         self.setLayout(layout)
-        self.resize(820, 700)
+        self.resize(1040, 760)
+        self.setMinimumSize(720, 520)
+        self._apply_style()
         restoreGeom(self, "ankigptSources")
 
         qconnect(self.picker.currentIndexChanged, self._show_current)
@@ -71,6 +98,35 @@ class SourceViewerDialog(QDialog):
             if index >= 0:
                 self.picker.setCurrentIndex(index)
         self._show_current()
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            """
+            QDialog#ankigptSourceWindow { background: #f4f7fb; }
+            QLabel#ankigptSourceTitle { color: #10204d; font-size: 24px; font-weight: 700; }
+            QLabel#ankigptSourceSubtitle { color: #667085; font-size: 13px; }
+            QFrame#ankigptSourceSidebar {
+                background: #f8faff; border: 1px solid #dfe6ef;
+                border-radius: 11px;
+            }
+            QLabel#ankigptSourceSection { color: #3157d5; font-size: 11px; font-weight: 700; }
+            QLabel#ankigptSourceInfo { color: #667085; padding: 8px 2px; }
+            QComboBox {
+                min-height: 32px; padding: 4px 8px; background: white;
+                border: 1px solid #cfd8e6; border-radius: 7px;
+            }
+            QTextBrowser#ankigptSourceBrowser {
+                padding: 18px; background: white; border: 1px solid #dfe6ef;
+                border-radius: 11px; selection-background-color: #ffe28a;
+            }
+            QPushButton { min-height: 29px; padding: 4px 12px; border-radius: 7px; }
+            QPushButton#ankigptSourcePrimary {
+                color: white; background: #3157d5; border: 1px solid #3157d5;
+                font-weight: 600;
+            }
+            QSplitter::handle { width: 10px; background: transparent; }
+            """
+        )
 
     def _current_doc(self) -> StoredDocument | None:
         doc_id = self.picker.currentData()

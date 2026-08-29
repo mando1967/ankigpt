@@ -6,11 +6,47 @@ ankigpt-menu-create-deck = Create Concept Deck from Documents...
 ankigpt-menu-deck-settings = Concept Deck Settings...
 
 ## Create concept deck dialog
-ankigpt-create-deck-title = Create Concept Deck
+ankigpt-create-deck-title = Create AI Course
+ankigpt-step-materials = STEP 1 OF 3  ·  MATERIALS & GOALS
+ankigpt-create-course = Create your course
+ankigpt-create-course-subtitle = Choose the material and tell AnkiGPT what matters. Clear guidance produces more relevant concepts and questions.
+ankigpt-course-details = Course Goals
+ankigpt-step-concepts = STEP 2 OF 3  ·  REVIEW CONCEPTS
+ankigpt-review-concepts = Review what the AI found
+ankigpt-review-concepts-subtitle = Keep only useful, on-target concepts. You can edit titles, summaries, and key points before creating the course.
 ankigpt-documents = Documents
+ankigpt-study-materials = Study Materials
+ankigpt-study-materials-intro = Add course files or a folder. Folders are searched recursively, including locally synchronized OneDrive folders. You can also drag files or folders here.
+ankigpt-drop-sources = Drop files or folders here
 ankigpt-add-files = Add Files...
+ankigpt-add-folder = Add Folder...
 ankigpt-remove-file = Remove
+ankigpt-clear-files = Clear
+ankigpt-no-study-materials = No study materials selected yet.
+ankigpt-study-material-summary =
+    { $count ->
+        [one] { $count } document selected ({ $size })
+       *[other] { $count } documents selected ({ $size })
+    }
+ankigpt-sources-skipped = Skipped { $unsupported } unsupported and { $missing } missing files.
 ankigpt-deck-name = Deck
+ankigpt-subject = Course or subject
+ankigpt-subject-placeholder = e.g. Engineering Statics
+ankigpt-learning-level = Learning level
+ankigpt-level-introductory = Introductory
+ankigpt-level-intermediate = Intermediate
+ankigpt-level-advanced = Advanced
+ankigpt-focus-topics = Focus topics
+ankigpt-focus-placeholder = e.g. moments, equilibrium, free-body diagrams
+ankigpt-exclusions = Exclude or de-emphasize
+ankigpt-exclusions-placeholder = e.g. syllabus dates, biographies, optional appendices
+ankigpt-question-style = Question style
+ankigpt-style-balanced = Balanced understanding
+ankigpt-style-core-knowledge = Core knowledge and definitions
+ankigpt-style-applied = Applied problems
+ankigpt-style-exam = Exam preparation
+ankigpt-additional-guidance = Additional guidance
+ankigpt-additional-guidance-placeholder = Anything else the AI should know about this course or your goals
 ankigpt-instructions = Instructions
 ankigpt-instructions-placeholder = Describe the course or what to focus on, e.g. "Intro to Microeconomics, weeks 1-6. Focus on definitions and the causal mechanisms behind each model."
 ankigpt-target-count = Number of concepts
@@ -47,8 +83,20 @@ ankigpt-column-key-points = Key points
 ankigpt-file-filter = Documents (*.pdf *.txt *.md *.docx)
 
 ## Preferences
-ankigpt-preferences-group = AnkiGPT (OpenAI-compatible API)
+ankigpt-preferences-group = Connect Your AI
+ankigpt-provider = AI service
 ankigpt-api-key = API key
+ankigpt-api-key-saved = Saved securely. Enter a new key to replace it.
+ankigpt-show-key = Show
+ankigpt-remove-key = Remove
+ankigpt-api-key-removed = Saved API key removed.
+ankigpt-api-key-help = How do I get this?
+ankigpt-test-connection = Test Connection
+ankigpt-testing-connection = Testing connection...
+ankigpt-connection-failed-title = Connection failed
+ankigpt-api-key-stored-securely = API key saved in your operating system's secure credential store.
+ankigpt-secure-storage-failed = The API key was not saved because secure credential storage is unavailable: { $error }. You can set OPENAI_API_KEY in your environment instead.
+ankigpt-advanced = Advanced
 ankigpt-base-url = Base URL
 ankigpt-model = Model
 ankigpt-timeout = Timeout (seconds)
@@ -76,6 +124,7 @@ ankigpt-correct = Correct
 ankigpt-incorrect = Incorrect
 ankigpt-score = Score: { $score }/100
 ankigpt-type-answer-hint = Type your answer, then press Enter (Shift+Enter for a new line).
+ankigpt-check-answer = Check Answer
 
 ## Limits
 ankigpt-max-chars = Max characters read per document
@@ -118,6 +167,8 @@ ankigpt-help-title = AnkiGPT Guide
 ## Sources
 ankigpt-sources-button = Sources
 ankigpt-sources-title = AnkiGPT Sources
+ankigpt-source-viewer-subtitle = See the exact course material behind this question. Referenced passages are highlighted for transparency.
+ankigpt-source-documents = COURSE SOURCES
 ankigpt-open-original = Open Original File
 ankigpt-next-highlight = Next Highlight
 ankigpt-original-missing = The original file is no longer at its recorded location.

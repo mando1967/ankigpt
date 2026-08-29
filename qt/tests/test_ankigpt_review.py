@@ -127,7 +127,9 @@ def harness() -> Iterator[Callable[..., Harness]]:
             col.close()
 
 
-def test_non_concept_card_is_ignored(harness: Callable[..., Harness]) -> None:
+def test_non_concept_card_keeps_scheduler_and_gets_modern_frame(
+    harness: Callable[..., Harness],
+) -> None:
     h = harness()
     basic = h.col.models.by_name("Basic")
     assert basic is not None
@@ -139,6 +141,13 @@ def test_non_concept_card_is_ignored(harness: Callable[..., Harness]) -> None:
     assert h.controller.intercept_answer() is False
     assert h.controller.suggested_ease() is None
     assert not h.runner.pending
+    question = h.controller._on_card_will_show(
+        "Front", note.cards()[0], "reviewQuestion"
+    )
+    answer = h.controller._on_card_will_show("Back", note.cards()[0], "reviewAnswer")
+    assert "ankigpt-standard-card" in question
+    assert "Show answer" in question and "ankigpt:review-home" in question
+    assert "ankigpt:rate:1" in answer and "ankigpt:rate:4" in answer
 
 
 def test_missing_api_key_fails_to_overview(harness: Callable[..., Harness]) -> None:
@@ -182,6 +191,9 @@ def test_generation_flow_and_reapply(harness: Callable[..., Harness]) -> None:
     assert h.controller.suggested_ease() is None
     answer = card.answer()
     assert "Model answer" in answer
+    assert "ankigpt-study-card" in answer
+    assert "ankigpt:rate:3" in answer
+    assert "ankigpt:review-home" in answer
     # the answer side names the concept and shows the notes it came from
     title = card.note()["Title"]
     assert f"Concept: {title}" in answer.replace("\u2068", "").replace("\u2069", "")
