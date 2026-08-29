@@ -29,9 +29,15 @@ from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 The screenshots below come from the running application and its sample
 microeconomics course.
 
+![Current AnkiGPT Study Hub](docs/ankigpt/screenshots/01-deck-list.png)
+
 | Create a course from source material | Review concepts before creating the deck |
 | --- | --- |
 | ![Create a concept deck from a document](docs/ankigpt/screenshots/02-create-deck.png) | ![Review AI-proposed concepts](docs/ankigpt/screenshots/04-preview.png) |
+
+| Refine a concept in the Study Hub | Review licensing, credits, and privacy information |
+| --- | --- |
+| ![Edit a concept and its visual aid](docs/ankigpt/screenshots/12-concept-editor.png) | ![About AnkiGPT application information](docs/ankigpt/screenshots/13-about.png) |
 
 | Study with an AI-generated question | Receive feedback and a suggested rating |
 | --- | --- |

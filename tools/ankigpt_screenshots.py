@@ -9,9 +9,8 @@ Usage (from the repo root, after `just build`):
         docs/ankigpt/screenshots [base-dir]
 
 With ANKIGPT_FAKE_LLM=1 it runs without network (placeholder content) —
-useful to check layouts. Screens: deck list, create-deck dialog, extraction
-progress, concept preview, a typed question, the graded answer, a multiple
-choice question, the deck overview and the concept deck settings.
+useful to check layouts. Screens include the Study Hub, concept editor, About
+page, create-course flow, reviewer, source viewer, and course settings.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ TYPED_ANSWER = (
     "It's the value of the next best alternative you give up when you choose "
     "something - not just money, but time and anything else forgone."
 )
-WIDTH, HEIGHT = 1100, 720
+WIDTH, HEIGHT = 1280, 850
 SHOTS: list[str] = []
 
 
@@ -91,6 +90,8 @@ def run() -> None:
     mw = aqt.mw
     assert mw is not None
     mw.resize(WIDTH, HEIGHT)
+    mw.show()
+    settle()
     col = mw.col
 
     from aqt.ankigpt import get_store
@@ -132,10 +133,28 @@ def run() -> None:
     dialog.on_create()
     pump(lambda: not dialog.isVisible(), "notes to be created", 60)
 
-    # ---- 3. deck list with the new deck and the AI button
+    # ---- 3. current Study Hub and its primary informational routes
     mw.moveToState("deckBrowser")
     mw.deckBrowser.refresh()
-    shot(mw, "01-deck-list")
+    settle(3.0)
+    mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
+    shot(mw.deckBrowser.web, "01-deck-list", 1.0)
+
+    import aqt.ankigpt as ankigpt_module
+
+    concepts = ankigpt_module._concept_records(mw)
+    if concepts:
+        ankigpt_module._shell_route = f"concept:{concepts[0][0]}"
+        mw.deckBrowser.refresh()
+        settle(3.0)
+        mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
+        shot(mw.deckBrowser.web, "12-concept-editor", 1.0)
+    ankigpt_module._shell_route = "about"
+    mw.deckBrowser.refresh()
+    settle(3.0)
+    mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
+    shot(mw.deckBrowser.web, "13-about", 1.0)
+    ankigpt_module._shell_route = "home"
 
     # ---- 4. overview of the concept deck (badge + Concept Settings)
     deck_id = col.decks.id_for_name(DECK)
