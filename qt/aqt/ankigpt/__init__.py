@@ -195,6 +195,7 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
                 "progress",
                 "settings",
                 "system",
+                "about",
             } or route.startswith(("concept:", "course:", "note:")):
                 _shell_route = route
                 context.refresh()
@@ -254,6 +255,25 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
             return (True, None)
         if message == "ankigpt:exit" and isinstance(context, DeckBrowser):
             mw.close()
+            return (True, None)
+        if message.startswith("ankigpt:about:") and isinstance(context, DeckBrowser):
+            from aqt.utils import openLink
+
+            action = message.removeprefix("ankigpt:about:")
+            links = {
+                "license": "https://github.com/superj6/ankigpt/blob/ankigpt/LICENSE",
+                "source": "https://github.com/superj6/ankigpt",
+                "releases": "https://github.com/superj6/ankigpt/releases",
+                "issues": "https://github.com/superj6/ankigpt/issues",
+            }
+            if action == "guide":
+                from aqt.ankigpt.help import show_guide
+
+                show_guide(mw)
+            elif action == "anki":
+                mw.onAbout()
+            elif url := links.get(action):
+                openLink(url)
             return (True, None)
         if message.startswith("ankigpt:system:") and isinstance(context, DeckBrowser):
             action = message.removeprefix("ankigpt:system:")
@@ -327,7 +347,7 @@ def _delete_course_from_shell(mw: AnkiQt, browser: object, message: str) -> None
     if not deck_name:
         return
     if not askUser(
-        f'Delete the course “{deck_name}”?\n\n'
+        f"Delete the course “{deck_name}”?\n\n"
         "Its cards and any subdecks will also be removed. You can undo this "
         "immediately from the Edit menu.",
         parent=mw,
@@ -346,6 +366,7 @@ def _delete_course_from_shell(mw: AnkiQt, browser: object, message: str) -> None
 
 
 def _shell_settings(mw: AnkiQt) -> dict[str, Any]:
+    from anki.utils import version_with_build
     from aqt.ankigpt.settings import llm_config, provider_id
 
     config = llm_config(mw.pm)
@@ -356,6 +377,7 @@ def _shell_settings(mw: AnkiQt) -> dict[str, Any]:
         "base_url": config.base_url,
         "timeout": config.timeout_secs,
         "max_chars": config.max_chars_per_file,
+        "version": version_with_build(),
     }
 
 
@@ -645,7 +667,7 @@ def _attach_visual_from_shell(mw: AnkiQt, browser: object) -> None:
     browser.web.eval(
         "(function(name){document.getElementById('concept-visual').value=name;"
         "const old=document.querySelector('.visual-preview,.visual-empty');"
-        "if(old)old.outerHTML='<figure class=\"visual-preview\"><img src=\"'+"
+        'if(old)old.outerHTML=\'<figure class="visual-preview"><img src="\'+'
         "name.replace(/\"/g,'&quot;')+'\" alt=\"\"><figcaption>'+"
         "name+'</figcaption></figure>';})((" + data + "));"
     )
@@ -654,24 +676,20 @@ def _attach_visual_from_shell(mw: AnkiQt, browser: object) -> None:
 def _set_editor_visual(
     browser: object, filename: str, alt_text: str, placement: str
 ) -> None:
-    data = json.dumps(
-        {"filename": filename, "alt": alt_text, "placement": placement}
-    )
+    data = json.dumps({"filename": filename, "alt": alt_text, "placement": placement})
     browser.web.eval(  # type: ignore[attr-defined]
         "(function(v){document.getElementById('concept-visual').value=v.filename;"
         "document.getElementById('concept-visual-alt').value=v.alt;"
         "document.getElementById('concept-visual-placement').value=v.placement;"
         "const old=document.querySelector('.visual-preview,.visual-empty');"
-        "if(old)old.outerHTML='<figure class=\"visual-preview\"><img src=\"'+"
+        'if(old)old.outerHTML=\'<figure class="visual-preview"><img src="\'+'
         "v.filename.replace(/\"/g,'&quot;')+'\" alt=\"'+"
         "v.alt.replace(/\"/g,'&quot;')+'\"><figcaption>'+v.alt+"
         "'</figcaption></figure>';})((" + data + "));"
     )
 
 
-def _generate_visual_from_shell(
-    mw: AnkiQt, browser: object, message: str
-) -> None:
+def _generate_visual_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     from aqt.ankigpt.visuals import VisualGenerationDialog
 
     try:

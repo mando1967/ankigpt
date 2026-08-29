@@ -44,6 +44,12 @@ large document was planned, candidates found so far):
 
 ## Using it
 
+Windows users can install a packaged build from the repository's GitHub
+Releases page. Maintainers can also download test installers from the
+**AnkiGPT Windows MSI** workflow's artifacts. These community builds are
+currently unsigned, so Windows may display a publisher warning until code
+signing is configured.
+
 1. Build and run as described in [Development](./docs/development.md)
    (`just run`).
 2. Preferences > Third Party Services: enter your API key. The base URL and
@@ -81,6 +87,23 @@ Set `ANKIGPT_FAKE_LLM=1` to run without network (deterministic fake answers),
 e.g. `ANKIGPT_FAKE_LLM=1 just run -b /tmp/ankigpt-base`. An end-to-end check
 that boots the app offscreen lives in `tools/ankigpt_smoke.py`;
 `tools/ankigpt_screenshots.py` regenerates the screenshots above.
+
+## Publishing a Windows installer
+
+The [AnkiGPT Windows MSI workflow](.github/workflows/ankigpt-windows-msi.yml)
+builds a self-contained Windows x64 installer using the repository's pinned
+Anki build environment.
+
+- Run it manually from **Actions > AnkiGPT Windows MSI > Run workflow** to
+  produce a downloadable test artifact. The version input is optional.
+- Push a tag such as `ankigpt-v1.0.0` to build the MSI and create a GitHub
+  Release automatically.
+- Build logs are retained as a separate artifact to help diagnose installer
+  failures.
+
+The packaged application includes its Python, Qt, and native runtime. End
+users do not need Rust, Python, Visual Studio Build Tools, MSYS2, or `just`.
+AI features still require a supported provider and API credential.
 
 ## Where the code lives
 

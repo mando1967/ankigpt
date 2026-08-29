@@ -57,6 +57,9 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
         notice="Connected successfully.",
     )
     system = render_study_hub(root, "Today", "system")
+    about = render_study_hub(
+        root, "Today", "about", settings={"version": "26.08.1-test"}
+    )
     course = render_study_hub(root, "Today", "course:10")
     notes = [
         {
@@ -79,11 +82,24 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
         root,
         "Today",
         "concept:100",
-        [(100, "Moment", "Turning effect.", ["M = Fd"], "moment.png", "Force and lever arm", "answer")],
+        [
+            (
+                100,
+                "Moment",
+                "Turning effect.",
+                ["M = Fd"],
+                "moment.png",
+                "Force and lever arm",
+                "answer",
+            )
+        ],
     )
     assert "Visual aid" in visual_editor and 'src="moment.png"' in visual_editor
     assert "ankigpt:attach-visual" in visual_editor
-    assert "Generate AI visual" in visual_editor and "ankigpt:generate-visual" in visual_editor
+    assert (
+        "Generate AI visual" in visual_editor
+        and "ankigpt:generate-visual" in visual_editor
+    )
     assert "Image description" in visual_editor and "Screen readers" in visual_editor
     assert "Your progress" in progress and "Ready to review" in progress
     assert "Settings" in settings and "AI connection" in settings
@@ -93,6 +109,10 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
     assert "Data and synchronization" in system
     assert "ankigpt:system:sync" in system and "ankigpt:system:check-db" in system
     assert "ankigpt:system:import" in system and "ankigpt:system:export" in system
+    assert "About AnkiGPT" in about and "26.08.1-test" in about
+    assert "AGPL-3.0-or-later" in about and "ankigpt:about:license" in about
+    assert "Anki credits" in about and "ankigpt:about:anki" in about
+    assert "Privacy and AI services" in about and "ankigpt:about:guide" in about
     assert "Statics" in course and "Start studying" in course
     assert "ankigpt:study:10" in course
     assert "ankigpt:course-sources:10" in course

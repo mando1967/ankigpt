@@ -73,6 +73,7 @@ def render_study_hub(
     <div class="nav-spacer"></div>
     <button class="nav-item {_active(route, "system")}" onclick="pycmd('ankigpt:route:system')">↻ <span>Data & Sync</span></button>
     <button class="nav-item {_active(route, "settings")}" onclick="pycmd('ankigpt:route:settings')">⚙ <span>Settings</span></button>
+    <button class="nav-item {_active(route, "about")}" onclick="pycmd('ankigpt:route:about')">ⓘ <span>About</span></button>
     <button class="nav-item nav-exit" onclick="pycmd('ankigpt:exit')">⏻ <span>Exit</span></button>
   </aside>
   {main}
@@ -85,7 +86,7 @@ def _active(route: str, expected: str) -> str:
     return "active" if route == expected else ""
 
 
-def _route_content(
+def _route_content(  # noqa: PLR0911 - each shell destination has distinct markup
     route: str,
     decks: list[Any],
     rows: str,
@@ -179,7 +180,11 @@ def _route_content(
             )
             options = "".join(
                 f'<option value="{value}" {"selected" if visual_placement == value else ""}>{label}</option>'
-                for value, label in (("question", "Question side"), ("answer", "Answer side"), ("both", "Both sides"))
+                for value, label in (
+                    ("question", "Question side"),
+                    ("answer", "Answer side"),
+                    ("both", "Both sides"),
+                )
             )
             return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:concepts')">← All concepts</button>
             <div class="page-head"><div class="hub-eyebrow">CONCEPT EDITOR</div><h1>Edit concept</h1>
@@ -258,6 +263,28 @@ def _route_content(
         <button class="operation-card" onclick="pycmd('ankigpt:system:import')"><span>⇩</span><strong>Import collection</strong><small>Bring cards or course packages into this profile</small></button>
         <button class="operation-card" onclick="pycmd('ankigpt:system:export')"><span>⇧</span><strong>Export collection</strong><small>Create a portable deck or collection package</small></button>
         </div></main>"""
+    if route == "about":
+        version = html.escape(str(settings.get("version", "Unknown")))
+        return f"""<main class="hub-main"><div class="page-head"><div class="hub-eyebrow">APPLICATION INFORMATION</div>
+        <h1>About AnkiGPT</h1><p>AI-assisted concept learning built on Anki's proven spaced-repetition system.</p></div>
+        <div class="about-grid"><section class="content-card about-summary"><div class="about-mark">A</div>
+        <div><h2>AnkiGPT</h2><p class="about-version">Version {version}</p>
+        <p>AnkiGPT is an open-source adaptation of Anki that adds grounded course generation, concept editing, visual learning aids, and contextual AI assistance.</p></div></section>
+        <section class="content-card"><h2>License and source</h2>
+        <p>AnkiGPT and the Anki code it incorporates are licensed under the <strong>GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later)</strong>. You may inspect, modify, and redistribute the source under that license.</p>
+        <div class="about-actions"><button class="hub-secondary" onclick="pycmd('ankigpt:about:license')">Read license</button>
+        <button class="hub-secondary" onclick="pycmd('ankigpt:about:source')">View source code</button>
+        <button class="hub-secondary" onclick="pycmd('ankigpt:about:releases')">Release notes</button></div></section>
+        <section class="content-card"><h2>Credits</h2>
+        <p>AnkiGPT is built on <strong>Anki</strong>, created by Damien Elmes and maintained by Ankitects and contributors. It also uses open-source projects including Python, Qt, Chromium, and their supporting libraries.</p>
+        <p>Names and detailed upstream acknowledgements are available in Anki's original About dialog.</p>
+        <button class="hub-secondary" onclick="pycmd('ankigpt:about:anki')">View Anki credits and versions</button></section>
+        <section class="content-card"><h2>Privacy and AI services</h2>
+        <p>Your collection is stored locally unless you choose to synchronize it. When you use an AI feature, relevant prompts and study content are sent to the AI provider configured in Settings. That provider's privacy and retention terms apply.</p>
+        <p>Review generated material before relying on it. AI output may contain errors and should not replace qualified medical, legal, financial, or academic advice.</p></section>
+        <section class="content-card"><h2>Help and support</h2><p>Learn how course generation, concept assistance, study inquiries, sources, and visuals work.</p>
+        <div class="about-actions"><button class="hub-primary" onclick="pycmd('ankigpt:about:guide')">Open AnkiGPT Guide</button>
+        <button class="hub-secondary" onclick="pycmd('ankigpt:about:issues')">Report an issue</button></div></section></div></main>"""
     return f"""<main class="hub-main">
     <section class="hub-hero">
       <div>
@@ -326,7 +353,8 @@ center > table { width:100%; max-width:none; }
 .concept-form select { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:10px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; }.settings-inline { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.shell-notice { margin-bottom:16px; padding:12px 14px; color:#265c42; background:#eaf7ef; border:1px solid #bfe3cd; border-radius:9px; }
 .visual-editor { margin:20px 0; padding:18px; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:10px; }.visual-editor h2 { margin-top:0; }.visual-preview { margin:0 0 16px; text-align:center; }.visual-preview img { max-width:100%; max-height:340px; border-radius:9px; }.visual-preview figcaption,.visual-empty { margin-top:7px; color:#718096; font-size:12px; }.visual-empty { padding:28px; text-align:center; border:1px dashed #cbd5e1; border-radius:8px; }
 .operation-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }.operation-card { display:grid; grid-template-columns:42px 1fr; grid-template-rows:auto auto; column-gap:13px; padding:18px; color:#263653; background:white; border:1px solid #dfe6ef; border-radius:11px; text-align:left; cursor:pointer; }.operation-card:hover { border-color:#7da3ef; background:#f8faff; }.operation-card>span { grid-row:1/3; display:grid; place-items:center; width:39px; height:39px; color:#2367e8; background:#eaf0ff; border-radius:10px; font-size:19px; }.operation-card strong { font-size:14px; }.operation-card small { margin-top:4px; color:#768399; }
+.about-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }.about-grid h2 { margin-top:0; color:#17274e; }.about-summary { grid-column:1/-1; display:flex; align-items:center; gap:18px; background:linear-gradient(120deg,#f8fbff,#edf4ff); }.about-mark { display:grid; place-items:center; flex:0 0 68px; width:68px; height:68px; color:#fff; background:linear-gradient(135deg,#2367e8,#6a8dff); border-radius:18px; font-size:36px; font-weight:800; }.about-summary h2 { margin:0; font-size:25px; }.about-version { margin:4px 0 10px; font-weight:700; }.about-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; }
 .course-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:18px; padding:30px; color:#fff; background:linear-gradient(125deg,#173a8f,#3478ee); border-radius:15px; }.course-hero .hub-eyebrow,.course-hero p { color:#dce8ff; }.course-hero h1 { margin:7px 0; font-size:31px; }.course-hero .hub-secondary { color:#173a8f; }.course-total { display:flex; flex-direction:column; align-items:center; min-width:125px; padding:20px; background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.24); border-radius:13px; }.course-total strong { font-size:38px; }.course-total span { color:#dce8ff; font-size:12px; }.course-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .page-head-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; }.library-list { display:flex; flex-direction:column; gap:8px; }.library-row { display:flex; align-items:center; justify-content:space-between; width:100%; padding:14px 16px; color:#243557; background:#fff; border:1px solid #e2e7ef; border-radius:9px; text-align:left; cursor:pointer; }.library-row:hover { border-color:#7da3ef; background:#f7f9ff; }.library-row strong { display:block; max-width:670px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.library-row small { display:block; margin-top:4px; color:#7b879b; }
-@media(max-width:760px){.ankigpt-hub{grid-template-columns:64px}.hub-nav{padding:20px 9px}.hub-brand{margin:0 auto 18px}.hub-brand:not(.hub-mark),.nav-item span{display:none}.nav-item{justify-content:center}.hub-main{padding:18px}.hub-hero{grid-template-columns:1fr}.hub-art{display:none}.hub-table th:nth-child(3),.hub-table td:nth-child(3){display:none}}
+@media(max-width:760px){.ankigpt-hub{grid-template-columns:64px}.hub-nav{padding:20px 9px}.hub-brand{margin:0 auto 18px}.hub-brand:not(.hub-mark),.nav-item span{display:none}.nav-item{justify-content:center}.hub-main{padding:18px}.hub-hero{grid-template-columns:1fr}.hub-art{display:none}.hub-table th:nth-child(3),.hub-table td:nth-child(3){display:none}.about-grid{grid-template-columns:1fr}.about-summary{grid-column:auto}}
 """
