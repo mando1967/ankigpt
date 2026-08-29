@@ -172,3 +172,71 @@ def test_fake_client_end_to_end() -> None:
         client.complete_json(system, user, "grade_answer", prompts.GRADE_SCHEMA)
     )
     assert g.ease == 1
+
+
+def test_extraction_prompts_filter_scaffolding_and_garbled_material() -> None:
+    system, _user = prompts.build_extract_prompt(
+        "Quiz 2: select two answers", "Focus on mechanisms", 10, "quiz.pdf"
+    )
+    assert "Never make a concept about document directions or quiz mechanics" in system
+    assert "bare question is not evidence" in system
+    assert "corrupted PDF extraction" in system
+    assert "Quality is more important than count" in system
+
+    merge_system, merge_user = prompts.build_merge_prompt(
+        [prompts.ConceptCandidate("Question 4", "Select the best answer.")],
+        "Focus on mechanisms",
+        20,
+    )
+    assert "strict quality gate" in merge_system
+    assert "question formatting" in merge_system
+    assert "garbled" in merge_system
+    assert "Return at most 20 concepts" in merge_user
+
+
+def test_grounded_inquiry_supports_study_and_explicit_editor_revisions() -> None:
+    system, user = prompts.build_inquiry_prompt(
+        mode="edit",
+        question="Make this clearer",
+        title="Moment of force",
+        summary="A force can turn an object.",
+        key_points=["Moment equals force times perpendicular distance"],
+        sources=["The moment is F times the perpendicular distance d."],
+    )
+    assert "must explicitly apply" in system
+    assert "MODE: EDIT" in user and "[1]" in user
+    result = prompts.parse_inquiry(
+        {
+            "answer": "The concept can be made more precise.",
+            "revised_title": "Moment of a Force",
+            "revised_summary": "A moment describes a force's turning effect.",
+            "revised_key_points": ["Use perpendicular distance"],
+            "source_refs": [1, 1, "bad"],
+            "visual_recommended": True,
+            "visual_description": "A force arrow and perpendicular lever arm.",
+            "visual_placement": "answer",
+        }
+    )
+    assert result.revised_title == "Moment of a Force"
+    assert result.source_refs == [1]
+    assert result.visual_recommended and result.visual_placement == "answer"
+
+
+def test_instructional_visual_prompt_and_response() -> None:
+    system, user = prompts.build_visual_prompt(
+        title="Moment of force",
+        summary="A force produces a turning effect.",
+        key_points=["M = Fd"],
+    )
+    assert "teach, not decorate" in system
+    assert "Do not reveal the answer" in system
+    assert "CONCEPT: Moment of force" in user
+    result = prompts.parse_visual(
+        {
+            "svg": '<svg viewBox="0 0 960 540"></svg>',
+            "alt_text": "A force and lever arm.",
+            "placement": "answer",
+            "rationale": "Shows the spatial relationship.",
+        }
+    )
+    assert result.placement == "answer" and result.alt_text

@@ -73,6 +73,7 @@ def render_study_hub(
     <div class="nav-spacer"></div>
     <button class="nav-item {_active(route, "system")}" onclick="pycmd('ankigpt:route:system')">↻ <span>Data & Sync</span></button>
     <button class="nav-item {_active(route, "settings")}" onclick="pycmd('ankigpt:route:settings')">⚙ <span>Settings</span></button>
+    <button class="nav-item nav-exit" onclick="pycmd('ankigpt:exit')">⏻ <span>Exit</span></button>
   </aside>
   {main}
 </div>
@@ -164,23 +165,42 @@ def _route_content(
             note_id = 0
         concept = next((item for item in concepts if item[0] == note_id), None)
         if concept:
-            nid, title, summary, points = concept
+            nid, title, summary, points = concept[:4]
+            visual, visual_alt, visual_placement = (
+                (*concept[4:7], "", "", "answer")[:3]
+                if len(concept) > 4
+                else ("", "", "answer")
+            )
             points_text = "\n".join(points)
+            preview = (
+                f'<figure class="visual-preview"><img src="{html.escape(visual, quote=True)}" alt="{html.escape(visual_alt, quote=True)}"><figcaption>{html.escape(visual_alt or visual)}</figcaption></figure>'
+                if visual
+                else '<div class="visual-empty">No visual attached</div>'
+            )
+            options = "".join(
+                f'<option value="{value}" {"selected" if visual_placement == value else ""}>{label}</option>'
+                for value, label in (("question", "Question side"), ("answer", "Answer side"), ("both", "Both sides"))
+            )
             return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:concepts')">← All concepts</button>
             <div class="page-head"><div class="hub-eyebrow">CONCEPT EDITOR</div><h1>Edit concept</h1>
             <p>Refine the material used to generate future study questions.</p></div>
             <section class="content-card concept-form"><label>Title<input id="concept-title" value="{html.escape(title, quote=True)}"></label>
             <label>Description<textarea id="concept-summary" rows="6">{html.escape(summary)}</textarea></label>
             <label>Key points <small>One per line</small><textarea id="concept-points" rows="7">{html.escape(points_text)}</textarea></label>
-            <div class="form-actions"><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts')">Cancel</button>
-            <button class="hub-primary" onclick="(function(){{const p={{nid:{nid},title:document.getElementById('concept-title').value,summary:document.getElementById('concept-summary').value,points:document.getElementById('concept-points').value}};pycmd('ankigpt:save-concept:'+encodeURIComponent(JSON.stringify(p)))}})()">Save changes</button></div></section></main>"""
+            <section class="visual-editor"><h2>Visual aid</h2>{preview}<input id="concept-visual" type="hidden" value="{html.escape(visual, quote=True)}">
+            <label>Image description <small>Explain what the visual shows. Screen readers use this description, and Ask AI uses it to understand the image.</small><input id="concept-visual-alt" value="{html.escape(visual_alt, quote=True)}" placeholder="Example: A force arrow acts downward at distance d from the pivot"></label>
+            <label>Show visual<select id="concept-visual-placement">{options}</select></label>
+            <div class="hero-actions"><button class="hub-primary" onclick="ankigptGenerateVisual()">✦ Generate AI visual</button><button class="hub-secondary" onclick="pycmd('ankigpt:attach-visual')">Attach or replace image</button><button class="hub-secondary" onclick="ankigptRemoveVisual()">Remove visual</button></div></section>
+            <div class="form-actions"><button class="hub-secondary" onclick="ankigptImproveConcept()">✦ Improve with AI</button><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts')">Cancel</button>
+            <button class="hub-primary" onclick="ankigptSaveConcept()">Save changes</button></div></section>
+            <script>function ankigptPayload(){{return {{nid:{nid},title:document.getElementById('concept-title').value,summary:document.getElementById('concept-summary').value,points:document.getElementById('concept-points').value,visual:document.getElementById('concept-visual').value,visual_alt:document.getElementById('concept-visual-alt').value,visual_placement:document.getElementById('concept-visual-placement').value}}}} function ankigptSaveConcept(){{pycmd('ankigpt:save-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptImproveConcept(){{pycmd('ankigpt:assist-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptGenerateVisual(){{pycmd('ankigpt:generate-visual:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptRemoveVisual(){{document.getElementById('concept-visual').value='';const p=document.querySelector('.visual-preview');if(p)p.outerHTML='<div class="visual-empty">No visual attached</div>';}}</script></main>"""
     if route == "concepts":
         cards = (
             "".join(
                 f"""<button class="course-tile" onclick="pycmd('ankigpt:route:concept:{nid}')">
             <span class="course-icon">◇</span><span><strong>{html.escape(title)}</strong>
             <small>{html.escape(summary[:110])}</small></span><b>›</b></button>"""
-                for nid, title, summary, _points in concepts
+                for nid, title, summary, _points, *_visual in concepts
             )
             or '<div class="empty-card">Create a course to begin building concepts.</div>'
         )
@@ -292,6 +312,7 @@ center > table { width:100%; max-width:none; }
 .hub-mark { display:grid; place-items:center; width:31px; height:31px; border-radius:9px; color:#fff; background:linear-gradient(135deg,#2367e8,#6a8dff); }
 .nav-item { display:flex; align-items:center; gap:11px; width:100%; padding:10px 12px; border:0; border-radius:9px; background:transparent; color:#36435c; font-weight:600; text-align:left; cursor:pointer; }
 .nav-item:hover { background:#e9eef8; }.nav-item.active { color:#fff; background:#2367e8; box-shadow:0 5px 13px rgba(35,103,232,.24); }.nav-spacer { flex:1; }
+.nav-exit { margin-top:4px; color:#9b2c2c; }.nav-exit:hover { color:#fff; background:#b42318; }
 .hub-main { padding:30px; min-width:0; }.hub-hero { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; align-items:center; padding:30px; border-radius:15px; background:linear-gradient(120deg,#f8fbff,#edf4ff); overflow:hidden; }
 .hub-eyebrow { color:#2367e8; font-size:11px; font-weight:800; letter-spacing:.1em; }.hub-hero h1 { margin:7px 0 4px; font-size:32px; line-height:1.15; color:#10204d; }.hub-hero p { margin:0 0 22px; color:#5e6b82; font-size:15px; }
 .hero-actions { display:flex; gap:10px; flex-wrap:wrap; }.hub-primary,.hub-secondary { padding:11px 18px; border-radius:8px; font-weight:700; cursor:pointer; }.hub-primary { color:#fff; background:#2367e8; border:1px solid #2367e8; }.hub-primary:hover { background:#1955c6; }.hub-secondary { color:#24406d; background:#fff; border:1px solid #cfd9e8; }.hub-art { width:100%; max-height:190px; }
@@ -301,8 +322,9 @@ center > table { width:100%; max-width:none; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
 .page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }
 .migration-note { display:inline-block; padding:10px 12px; color:#4e5f7d; background:#f2f5fa; border-radius:8px; font-size:12px; }
-.text-back { padding:7px 0; color:#3157d5; background:transparent; border:0; font-weight:650; cursor:pointer; }.concept-form { max-width:780px; }.concept-form label { display:block; margin-bottom:17px; color:#34435f; font-size:12px; font-weight:700; }.concept-form label small { color:#8490a4; font-weight:400; }.concept-form input,.concept-form textarea { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:11px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; font:inherit; font-size:14px; resize:vertical; }.concept-form input:focus,.concept-form textarea:focus { outline:2px solid #b9cbfa; border-color:#5c7fdb; }.form-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:5px; }
+.text-back { padding:11px 16px; color:#3157d5; background:#f7f9ff; border:1px solid #cfd9e8; border-radius:9px; font-size:15px; font-weight:700; line-height:1.2; cursor:pointer; }.text-back:hover { color:#fff; background:#3157d5; border-color:#3157d5; }.concept-form { max-width:780px; }.concept-form label { display:block; margin-bottom:17px; color:#34435f; font-size:12px; font-weight:700; }.concept-form label small { color:#8490a4; font-weight:400; }.concept-form input,.concept-form textarea { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:11px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; font:inherit; font-size:14px; resize:vertical; }.concept-form input:focus,.concept-form textarea:focus { outline:2px solid #b9cbfa; border-color:#5c7fdb; }.form-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:5px; }
 .concept-form select { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:10px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; }.settings-inline { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.shell-notice { margin-bottom:16px; padding:12px 14px; color:#265c42; background:#eaf7ef; border:1px solid #bfe3cd; border-radius:9px; }
+.visual-editor { margin:20px 0; padding:18px; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:10px; }.visual-editor h2 { margin-top:0; }.visual-preview { margin:0 0 16px; text-align:center; }.visual-preview img { max-width:100%; max-height:340px; border-radius:9px; }.visual-preview figcaption,.visual-empty { margin-top:7px; color:#718096; font-size:12px; }.visual-empty { padding:28px; text-align:center; border:1px dashed #cbd5e1; border-radius:8px; }
 .operation-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }.operation-card { display:grid; grid-template-columns:42px 1fr; grid-template-rows:auto auto; column-gap:13px; padding:18px; color:#263653; background:white; border:1px solid #dfe6ef; border-radius:11px; text-align:left; cursor:pointer; }.operation-card:hover { border-color:#7da3ef; background:#f8faff; }.operation-card>span { grid-row:1/3; display:grid; place-items:center; width:39px; height:39px; color:#2367e8; background:#eaf0ff; border-radius:10px; font-size:19px; }.operation-card strong { font-size:14px; }.operation-card small { margin-top:4px; color:#768399; }
 .course-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:18px; padding:30px; color:#fff; background:linear-gradient(125deg,#173a8f,#3478ee); border-radius:15px; }.course-hero .hub-eyebrow,.course-hero p { color:#dce8ff; }.course-hero h1 { margin:7px 0; font-size:31px; }.course-hero .hub-secondary { color:#173a8f; }.course-total { display:flex; flex-direction:column; align-items:center; min-width:125px; padding:20px; background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.24); border-radius:13px; }.course-total strong { font-size:38px; }.course-total span { color:#dce8ff; font-size:12px; }.course-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .page-head-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; }.library-list { display:flex; flex-direction:column; gap:8px; }.library-row { display:flex; align-items:center; justify-content:space-between; width:100%; padding:14px 16px; color:#243557; background:#fff; border:1px solid #e2e7ef; border-radius:9px; text-align:left; cursor:pointer; }.library-row:hover { border-color:#7da3ef; background:#f7f9ff; }.library-row strong { display:block; max-width:670px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.library-row small { display:block; margin-top:4px; color:#7b879b; }

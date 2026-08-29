@@ -32,6 +32,7 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert "Up to date" in page
     assert "12 cards studied today" in page
     assert "Advanced Anki Tools" not in page
+    assert "Exit" in page and "ankigpt:exit" in page
 
 
 def test_shell_routes_stay_in_the_new_interface() -> None:
@@ -73,6 +74,17 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
     assert "Your concepts" in concepts and "ankigpt:route:concepts" in concepts
     assert "Moment of Force" in concepts
     assert "Edit concept" in editor and "ankigpt:save-concept" in editor
+    assert "Improve with AI" in editor and "ankigpt:assist-concept" in editor
+    visual_editor = render_study_hub(
+        root,
+        "Today",
+        "concept:100",
+        [(100, "Moment", "Turning effect.", ["M = Fd"], "moment.png", "Force and lever arm", "answer")],
+    )
+    assert "Visual aid" in visual_editor and 'src="moment.png"' in visual_editor
+    assert "ankigpt:attach-visual" in visual_editor
+    assert "Generate AI visual" in visual_editor and "ankigpt:generate-visual" in visual_editor
+    assert "Image description" in visual_editor and "Screen readers" in visual_editor
     assert "Your progress" in progress and "Ready to review" in progress
     assert "Settings" in settings and "AI connection" in settings
     assert "gpt-test" in settings and "https://example.test/v1" in settings

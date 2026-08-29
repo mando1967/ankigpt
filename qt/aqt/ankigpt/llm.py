@@ -11,6 +11,7 @@ background threads.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -202,6 +203,28 @@ class FakeLLMClient:
             return {"sections": [], "rationale": "fake: nothing missing"}
         if schema_name == "test_connection":
             return {"status": "ok"}
+        if schema_name == "learning_inquiry":
+            title = _after(user, "CONCEPT TITLE:")
+            editing = _after(user, "MODE:") == "EDIT"
+            return {
+                "answer": f"A grounded explanation of {title}.",
+                "revised_title": title if editing else "",
+                "revised_summary": f"A clearer explanation of {title}." if editing else "",
+                "revised_key_points": [f"Core idea of {title}"] if editing else [],
+                "source_refs": [1] if "[1]" in user else [],
+                "visual_recommended": editing,
+                "visual_description": f"A simple labeled diagram of {title}." if editing else "",
+                "visual_placement": "answer",
+            }
+        if schema_name == "generate_visual":
+            title = _after(user, "CONCEPT:")
+            safe_title = html.escape(title)
+            return {
+                "svg": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540"><rect x="80" y="190" width="300" height="130" rx="18" fill="#eaf0ff" stroke="#2367e8" stroke-width="4"/><text x="230" y="265" text-anchor="middle" font-size="28" fill="#14213d">{safe_title}</text><line x1="380" y1="255" x2="650" y2="255" stroke="#2367e8" stroke-width="5"/><circle cx="730" cy="255" r="85" fill="#effaf3" stroke="#22a06b" stroke-width="4"/><text x="730" y="265" text-anchor="middle" font-size="24" fill="#14213d">Key idea</text></svg>',
+                "alt_text": f"A diagram connecting {title} to its key idea.",
+                "placement": "answer",
+                "rationale": "The relationship diagram emphasizes the concept's central connection.",
+            }
         raise LLMError(f"fake client: unknown schema {schema_name}")
 
     @staticmethod

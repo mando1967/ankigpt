@@ -77,6 +77,9 @@ class ActiveQuestion:
     concept_points: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     passages: list[retrieve.Passage] = field(default_factory=list)
+    visual: str = ""
+    visual_alt: str = ""
+    visual_placement: str = "answer"
     history_id: int | None = None
     user_answer: str | None = None
     choice: int | None = None
@@ -383,11 +386,25 @@ class ConceptReviewController:
             concept_points=concepts.field_to_lines(note[concepts.FIELD_KEY_POINTS]),
             sources=concepts.field_to_lines(note[concepts.FIELD_SOURCES]),
             passages=list(passages or []),
+            visual=concepts.field_to_text(note[concepts.FIELD_VISUAL]),
+            visual_alt=concepts.field_to_text(note[concepts.FIELD_VISUAL_ALT]),
+            visual_placement=concepts.field_to_text(
+                note[concepts.FIELD_VISUAL_PLACEMENT]
+            )
+            or "answer",
             question=question,
             mastery=mastery,
             settings=settings,
             render_output=TemplateRenderOutput(
-                question_text=render_question_html(question, mode, mastery),
+                question_text=render_question_html(
+                    question,
+                    mode,
+                    mastery,
+                    concepts.field_to_text(note[concepts.FIELD_VISUAL]),
+                    concepts.field_to_text(note[concepts.FIELD_VISUAL_ALT]),
+                    concepts.field_to_text(note[concepts.FIELD_VISUAL_PLACEMENT])
+                    or "answer",
+                ),
                 answer_text="",
                 question_av_tags=[],
                 answer_av_tags=[],
@@ -700,6 +717,9 @@ class ConceptReviewController:
         if message == "ankigpt:review-home":
             self.mw.moveToState("deckBrowser")
             return (True, None)
+        if message == "ankigpt:ask-ai":
+            self._ask_ai()
+            return (True, None)
         if message.startswith("ankigpt:rate:"):
             try:
                 ease = int(message.rsplit(":", 1)[1])
@@ -719,6 +739,27 @@ class ConceptReviewController:
             return (True, None)
         self._choose(index)
         return (True, None)
+
+    def _ask_ai(self) -> None:
+        cur = self._current
+        if cur is None:
+            return
+        from aqt.ankigpt.inquiry import InquiryContext, InquiryDialog
+
+        sources = [passage.text for passage in cur.passages] or list(cur.sources)
+        if cur.visual_alt:
+            sources.append(f"Visual description: {cur.visual_alt}")
+        InquiryDialog(
+            self.mw,
+            self.mw.pm,
+            InquiryContext(
+                mode="study",
+                title=cur.title,
+                summary=cur.summary,
+                key_points=list(cur.concept_points),
+                sources=sources,
+            ),
+        ).exec()
 
     def _open_source(self, arg: str) -> None:
         """'docid:start:end' from an Open-in-source link on the answer side."""
@@ -852,7 +893,8 @@ def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
     return (
         '<div class="ankigpt-study-top"><button type="button" '
         "onclick=\"pycmd('ankigpt:review-home')\">← Study Hub</button>"
-        f'<div class="ankigpt-header">{details}</div></div>'
+        f'<div class="ankigpt-header">{details}</div><button type="button" '
+        "onclick=\"pycmd('ankigpt:ask-ai')\">✦ Ask AI</button></div>"
     )
 
 
@@ -901,9 +943,16 @@ def render_source_html(cur: ActiveQuestion) -> str:
 
 
 def render_question_html(
-    question: GeneratedQuestion, mode: Mode, mastery: MasteryInfo | None = None
+    question: GeneratedQuestion,
+    mode: Mode,
+    mastery: MasteryInfo | None = None,
+    visual: str = "",
+    visual_alt: str = "",
+    visual_placement: str = "answer",
 ) -> str:
     parts = [_header(mode, mastery), _question_block(question)]
+    if visual_placement in {"question", "both"}:
+        parts.append(_visual_html(visual, visual_alt))
     if mode == "typed":
         parts.append(
             '<textarea id="typeans" rows="4" onkeydown="'
@@ -940,6 +989,15 @@ def _points_block(title: str, points: list[str]) -> str:
     return f'<div class="ankigpt-keypoints"><b>{html.escape(title)}</b><ul>{items}</ul></div>'
 
 
+def _visual_html(filename: str, alt: str) -> str:
+    if not filename:
+        return ""
+    safe_name = html.escape(filename, quote=True)
+    safe_alt = html.escape(alt, quote=True)
+    caption = f"<figcaption>{html.escape(alt)}</figcaption>" if alt else ""
+    return f'<figure class="ankigpt-visual"><img src="{safe_name}" alt="{safe_alt}">{caption}</figure>'
+
+
 def _rating_buttons(suggested: int | None) -> str:
     buttons = []
     for ease in (1, 2, 3, 4):
@@ -958,6 +1016,8 @@ def render_answer_html(cur: ActiveQuestion) -> str:
     if cur.mode == "mcq":
         parts.append(_option_list(q, cur.choice, reveal=cur.graded))
     parts.append("<hr id=answer>")
+    if cur.visual_placement in {"answer", "both"}:
+        parts.append(_visual_html(cur.visual, cur.visual_alt))
 
     if cur.mode == "typed" and cur.user_answer:
         parts.append(

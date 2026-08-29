@@ -223,6 +223,19 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
         ):
             _save_concept_from_shell(mw, context, message)
             return (True, None)
+        if message.startswith("ankigpt:assist-concept:") and isinstance(
+            context, DeckBrowser
+        ):
+            _assist_concept_from_shell(mw, context, message)
+            return (True, None)
+        if message == "ankigpt:attach-visual" and isinstance(context, DeckBrowser):
+            _attach_visual_from_shell(mw, context)
+            return (True, None)
+        if message.startswith("ankigpt:generate-visual:") and isinstance(
+            context, DeckBrowser
+        ):
+            _generate_visual_from_shell(mw, context, message)
+            return (True, None)
         if message.startswith("ankigpt:save-note:") and isinstance(
             context, DeckBrowser
         ):
@@ -238,6 +251,9 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
             return (True, None)
         if message == "ankigpt:test-settings" and isinstance(context, DeckBrowser):
             _test_shell_settings(mw, context)
+            return (True, None)
+        if message == "ankigpt:exit" and isinstance(context, DeckBrowser):
+            mw.close()
             return (True, None)
         if message.startswith("ankigpt:system:") and isinstance(context, DeckBrowser):
             action = message.removeprefix("ankigpt:system:")
@@ -395,8 +411,11 @@ def _test_shell_settings(mw: AnkiQt, browser: object) -> None:
     ).without_collection().run_in_background()
 
 
-def _concept_records(mw: AnkiQt) -> list[tuple[int, str, str, list[str]]]:
+def _concept_records(mw: AnkiQt) -> list[tuple[Any, ...]]:
     from aqt.ankigpt.concepts import (
+        FIELD_VISUAL,
+        FIELD_VISUAL_ALT,
+        FIELD_VISUAL_PLACEMENT,
         NOTETYPE_NAME,
         field_to_lines,
         field_to_text,
@@ -413,12 +432,16 @@ def _concept_records(mw: AnkiQt) -> list[tuple[int, str, str, list[str]]]:
         fields = split_fields(packed_fields)
         if len(fields) < 3:
             continue
+        note = mw.col.get_note(NoteId(note_id))
         records.append(
             (
                 int(note_id),
                 field_to_text(fields[0]),
                 field_to_text(fields[1]),
                 field_to_lines(fields[2]),
+                field_to_text(note[FIELD_VISUAL]),
+                field_to_text(note[FIELD_VISUAL_ALT]),
+                field_to_text(note[FIELD_VISUAL_PLACEMENT]) or "answer",
             )
         )
     return records
@@ -519,7 +542,12 @@ def _add_card_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
 
 def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     from anki.collection import Collection
-    from aqt.ankigpt.concepts import points_to_field
+    from aqt.ankigpt.concepts import (
+        FIELD_VISUAL,
+        FIELD_VISUAL_ALT,
+        FIELD_VISUAL_PLACEMENT,
+        points_to_field,
+    )
     from aqt.operations import CollectionOp
 
     try:
@@ -530,6 +558,11 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
         points = [
             line.strip() for line in str(payload["points"]).splitlines() if line.strip()
         ]
+        visual = str(payload.get("visual", "")).strip()
+        visual_alt = str(payload.get("visual_alt", "")).strip()
+        placement = str(payload.get("visual_placement", "answer"))
+        if placement not in {"question", "answer", "both"}:
+            placement = "answer"
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return
     if not title or not summary:
@@ -540,6 +573,9 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
         note["Title"] = html.escape(title)
         note["Summary"] = html.escape(summary)
         note["KeyPoints"] = points_to_field(points)
+        note[FIELD_VISUAL] = html.escape(visual)
+        note[FIELD_VISUAL_ALT] = html.escape(visual_alt)
+        note[FIELD_VISUAL_PLACEMENT] = placement
         return col.update_note(note)
 
     def done(_changes: object) -> None:
@@ -548,6 +584,115 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
         browser.refresh()  # type: ignore[attr-defined]
 
     CollectionOp(parent=mw, op=save).success(done).run_in_background()
+
+
+def _assist_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
+    from aqt.ankigpt.inquiry import InquiryContext, InquiryDialog
+
+    try:
+        payload = json.loads(unquote(message.split(":", 2)[2]))
+        title = str(payload["title"]).strip()
+        summary = str(payload["summary"]).strip()
+        points = [p.strip() for p in str(payload["points"]).splitlines() if p.strip()]
+        visual_alt = str(payload.get("visual_alt", "")).strip()
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return
+    if not title:
+        return
+
+    def apply(result: object) -> None:
+        revised = {
+            "title": getattr(result, "revised_title", title),
+            "summary": getattr(result, "revised_summary", summary),
+            "points": "\n".join(getattr(result, "revised_key_points", points)),
+        }
+        data = json.dumps(revised)
+        browser.web.eval(
+            f"(function(p){{document.getElementById('concept-title').value=p.title;"
+            "document.getElementById('concept-summary').value=p.summary;"
+            "document.getElementById('concept-points').value=p.points;}})("
+            f"{data});"
+        )
+
+    InquiryDialog(
+        mw,
+        mw.pm,
+        InquiryContext(
+            "edit",
+            title,
+            summary,
+            points,
+            sources=[f"Visual description: {visual_alt}"] if visual_alt else [],
+        ),
+        apply,
+    ).exec()
+
+
+def _attach_visual_from_shell(mw: AnkiQt, browser: object) -> None:
+    from aqt.utils import getFile
+
+    path = getFile(
+        mw,
+        "Attach concept visual",
+        None,
+        filter="Images (*.png *.jpg *.jpeg *.gif *.webp *.svg)",
+        key="ankigptVisual",
+    )
+    if not path or not isinstance(path, str):
+        return
+    filename = mw.col.media.add_file(path)
+    data = json.dumps(filename)
+    browser.web.eval(
+        "(function(name){document.getElementById('concept-visual').value=name;"
+        "const old=document.querySelector('.visual-preview,.visual-empty');"
+        "if(old)old.outerHTML='<figure class=\"visual-preview\"><img src=\"'+"
+        "name.replace(/\"/g,'&quot;')+'\" alt=\"\"><figcaption>'+"
+        "name+'</figcaption></figure>';})((" + data + "));"
+    )
+
+
+def _set_editor_visual(
+    browser: object, filename: str, alt_text: str, placement: str
+) -> None:
+    data = json.dumps(
+        {"filename": filename, "alt": alt_text, "placement": placement}
+    )
+    browser.web.eval(  # type: ignore[attr-defined]
+        "(function(v){document.getElementById('concept-visual').value=v.filename;"
+        "document.getElementById('concept-visual-alt').value=v.alt;"
+        "document.getElementById('concept-visual-placement').value=v.placement;"
+        "const old=document.querySelector('.visual-preview,.visual-empty');"
+        "if(old)old.outerHTML='<figure class=\"visual-preview\"><img src=\"'+"
+        "v.filename.replace(/\"/g,'&quot;')+'\" alt=\"'+"
+        "v.alt.replace(/\"/g,'&quot;')+'\"><figcaption>'+v.alt+"
+        "'</figcaption></figure>';})((" + data + "));"
+    )
+
+
+def _generate_visual_from_shell(
+    mw: AnkiQt, browser: object, message: str
+) -> None:
+    from aqt.ankigpt.visuals import VisualGenerationDialog
+
+    try:
+        payload = json.loads(unquote(message.split(":", 2)[2]))
+        title = str(payload["title"]).strip()
+        summary = str(payload["summary"]).strip()
+        points = [p.strip() for p in str(payload["points"]).splitlines() if p.strip()]
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return
+    if not title or not summary:
+        return
+    VisualGenerationDialog(
+        mw,
+        title,
+        summary,
+        points,
+        "",
+        lambda filename, alt, placement: _set_editor_visual(
+            browser, filename, alt, placement
+        ),
+    ).exec()
 
 
 def _install_shell_chrome(mw: AnkiQt) -> None:

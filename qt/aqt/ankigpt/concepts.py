@@ -28,7 +28,19 @@ FIELD_SUMMARY = "Summary"
 FIELD_KEY_POINTS = "KeyPoints"
 FIELD_SOURCES = "Sources"
 FIELD_CONTEXT = "Context"
-FIELDS = (FIELD_TITLE, FIELD_SUMMARY, FIELD_KEY_POINTS, FIELD_SOURCES, FIELD_CONTEXT)
+FIELD_VISUAL = "Visual"
+FIELD_VISUAL_ALT = "VisualAltText"
+FIELD_VISUAL_PLACEMENT = "VisualPlacement"
+FIELDS = (
+    FIELD_TITLE,
+    FIELD_SUMMARY,
+    FIELD_KEY_POINTS,
+    FIELD_SOURCES,
+    FIELD_CONTEXT,
+    FIELD_VISUAL,
+    FIELD_VISUAL_ALT,
+    FIELD_VISUAL_PLACEMENT,
+)
 
 _QFMT = '<div class="ankigpt-title">{{Title}}</div>'
 _AFMT = (
@@ -36,7 +48,7 @@ _AFMT = (
     '<div class="ankigpt-summary">{{Summary}}</div>\n'
     '<div class="ankigpt-keypoints">{{KeyPoints}}</div>'
 )
-CSS_VERSION = 3
+CSS_VERSION = 4
 _CSS = f"""/* ankigpt-css-v{CSS_VERSION} */
 .card {{
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -79,6 +91,7 @@ _CSS = f"""/* ankigpt-css-v{CSS_VERSION} */
 .ankigpt-option-wrong {{ border-color: #c33 !important; background: #f9e6e6 !important; }}
 #typeans {{ display: block; width: min(760px, 100%); box-sizing: border-box; margin: 0 auto; font-size: 1em; font-family: inherit; padding: 14px; border: 1px solid #cfd8e6; border-radius: 9px; resize: vertical; }}
 .ankigpt-model-answer,.ankigpt-user-answer,.ankigpt-keypoints {{ padding: 15px 17px; margin: 12px 0; background: #f7f9fc; border-radius: 9px; line-height: 1.5; }}
+.ankigpt-visual {{ margin:18px auto; text-align:center; }} .ankigpt-visual img {{ max-width:100%; max-height:440px; object-fit:contain; border-radius:10px; }} .ankigpt-visual figcaption {{ margin-top:7px; color:#718096; font-size:.78em; }}
 .ankigpt-source {{ padding: 15px 17px; border: 1px solid #e1e7ef; border-radius: 9px; }}
 .ankigpt-study-actions {{ display:flex; justify-content:center; margin:20px 0 6px; }}
 .ankigpt-study-actions button {{ min-width:180px; padding:12px 18px; color:#fff; background:#2367e8; border:0; border-radius:8px; font-size:.95em; font-weight:700; cursor:pointer; }}
@@ -112,8 +125,16 @@ def concept_deck_ids(col: Collection) -> set[int]:
 def ensure_notetype(col: Collection) -> NotetypeDict:
     """Return the concept notetype, creating it if this collection lacks it."""
     if existing := col.models.by_name(NOTETYPE_NAME):
+        names = {str(field["name"]) for field in existing["flds"]}
+        changed = False
+        for name in FIELDS:
+            if name not in names:
+                col.models.add_field(existing, col.models.new_field(name))
+                changed = True
         if existing.get("css") != _CSS:
             existing["css"] = _CSS
+            changed = True
+        if changed:
             col.models.update_dict(existing)
             existing = col.models.by_name(NOTETYPE_NAME) or existing
         return existing
@@ -202,5 +223,8 @@ def create_concept_notes(
         note[FIELD_KEY_POINTS] = points_to_field(c.key_points)
         note[FIELD_SOURCES] = sources_to_field(c.sources)
         note[FIELD_CONTEXT] = html.escape(context)
+        note[FIELD_VISUAL] = ""
+        note[FIELD_VISUAL_ALT] = ""
+        note[FIELD_VISUAL_PLACEMENT] = "answer"
         requests.append(AddNoteRequest(note=note, deck_id=deck_id))
     return col.add_notes(requests)

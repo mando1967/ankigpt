@@ -262,6 +262,26 @@ class PromptError(ValueError):
     """The LLM returned something that doesn't fit the request."""
 
 
+@dataclass
+class InquiryResult:
+    answer: str
+    revised_title: str = ""
+    revised_summary: str = ""
+    revised_key_points: list[str] = field(default_factory=list)
+    source_refs: list[int] = field(default_factory=list)
+    visual_recommended: bool = False
+    visual_description: str = ""
+    visual_placement: str = "answer"
+
+
+@dataclass
+class GeneratedVisual:
+    svg: str
+    alt_text: str
+    placement: str
+    rationale: str
+
+
 # ---------------------------------------------------------------------------
 # JSON schemas (OpenAI strict mode: every property required, no extras)
 # ---------------------------------------------------------------------------
@@ -289,6 +309,12 @@ QUESTION_SCHEMA = _obj(
         "correct_index": {"type": "integer"},
         "explanation": {"type": "string"},
         "source_refs": {"type": "array", "items": {"type": "integer"}},
+        "visual_recommended": {"type": "boolean"},
+        "visual_description": {"type": "string"},
+        "visual_placement": {
+            "type": "string",
+            "enum": ["question", "answer", "both"],
+        },
     }
 )
 
@@ -356,6 +382,25 @@ MERGE_SCHEMA = _obj(
                 }
             ),
         }
+    }
+)
+
+INQUIRY_SCHEMA = _obj(
+    {
+        "answer": {"type": "string"},
+        "revised_title": {"type": "string"},
+        "revised_summary": {"type": "string"},
+        "revised_key_points": _str_list(),
+        "source_refs": {"type": "array", "items": {"type": "integer"}},
+    }
+)
+
+VISUAL_SCHEMA = _obj(
+    {
+        "svg": {"type": "string"},
+        "alt_text": {"type": "string"},
+        "placement": {"type": "string", "enum": ["question", "answer", "both"]},
+        "rationale": {"type": "string"},
     }
 )
 
@@ -546,14 +591,27 @@ def parse_grade(data: dict[str, Any]) -> GradeResult:
 _EXTRACT_SYSTEM = """You extract study concepts from course material for spaced-repetition review.
 A concept is a single, self-contained idea worth remembering: a definition, a mechanism, a theorem, a distinction, a procedure, a cause-effect relationship.
 
+First classify the supplied text. Study material teaches or explains reusable subject
+knowledge. Scaffolding includes directions, grading rules, rubrics, due dates, learning
+platform text, navigation, answer-entry instructions, and other administrative content.
+Assessment material includes quiz/exam questions, answer choices, point values, attempt
+history, and solution keys. Extract concepts only from study material and from assessment
+material that contains enough explanation or a worked solution to support the concept.
+
 For each concept:
 - "title": short, specific (3-10 words).
 - "summary": 2-4 sentences that fully explain the concept as the material presents it.
 - "key_points": 2-5 essential facts a learner must know.
 - "source_excerpt": a verbatim quote (up to ~500 characters) from the text that best supports the concept.
 
-Prefer concepts that match the learner's instructions. Skip boilerplate, administrative text, and trivia. Do not duplicate concepts.
-The learner's course, level, priority topics, and exclusions are hard relevance constraints. A concept must be explicitly supported by the supplied document text; never add plausible subject knowledge from memory. If a passage is outside the requested scope or too fragmentary to teach accurately, return fewer concepts instead of guessing.
+Quality rules:
+- Prefer concepts that match the learner's instructions. Skip scaffolding, boilerplate, administrative text, and trivia. Do not duplicate concepts.
+- Never make a concept about document directions or quiz mechanics (for example "select two answers," "show your work," a point value, or a submission deadline).
+- When a quiz problem includes a supported principle or an explained solution, extract that reusable principle in clean instructional language. Do not copy the question format, question number, answer choices, blanks, commands to the student, or grading language into the title, summary, or key points.
+- A bare question is not evidence for its answer. If the text asks something but does not supply enough teaching content, an answer, or a worked solution, skip it rather than answering from memory.
+- Treat text with broken reading order, isolated glyphs, replacement characters, mangled formulas, or incoherent fragments as unreadable. Do not repair or interpret corrupted PDF extraction from outside knowledge; skip it.
+- The learner's course, level, priority topics, and exclusions are hard relevance constraints. Every factual statement must be explicitly supported by legible supplied text.
+- Return fewer concepts than requested whenever the material does not support enough distinct, useful, self-contained concepts. Quality is more important than count.
 """
 
 
@@ -593,7 +651,8 @@ You see a skim of the document: one line per section with its index, position, l
 
 Rules:
 - Return the sections to read as {"index", "priority"} with priority 5 (must read) down to 1 (nice to have). Omit sections that should not be read.
-- Prefer substantive teaching material: definitions, mechanisms, methods, worked examples, key results. Skip prefaces, acknowledgements, references, indexes, exercises-only lists, and administrative text.
+- Prefer substantive teaching material: definitions, mechanisms, methods, worked examples, explained solutions, and key results.
+- Deprioritize directions, rubrics, schedules, navigation, answer-entry instructions, question-only exercise lists, answer choices without explanations, references, indexes, and visibly corrupted text extraction.
 - Aim for a set whose total length is around the budget; include more sections than fit so lower priorities can be dropped.
 - Spread choices across the document when the instructions do not single out a part.
 """
@@ -630,7 +689,7 @@ def parse_plan(data: dict[str, Any]) -> list[tuple[int, int]]:
 
 
 _GAP_SYSTEM = """You check whether important material was skipped while reading a long document under a budget.
-You see the titles of concepts already extracted, and a skim of the sections that were NOT read. Pick the unread sections most likely to contain important concepts that are missing, if any. It is fine to pick none.
+You see the titles of concepts already extracted, and a skim of the sections that were NOT read. Pick the unread sections most likely to contain important, well-explained concepts that are missing, if any. Do not select administrative material, question-only assessments, answer choices without explanations, or corrupted text. It is fine to pick none.
 """
 
 
@@ -669,9 +728,13 @@ _MERGE_SYSTEM = """You curate a list of study concepts extracted from course mat
 You receive candidate concepts (possibly overlapping, from different parts of the documents) and must produce a final, deduplicated, well-ordered list.
 
 - Merge near-duplicates into one concept, combining their key points and keeping up to 3 of the best source excerpts in "sources".
-- Rank by importance to the learner's instructions; drop the least important to hit the requested count.
+- Act as a strict quality gate, not merely a summarizer. Delete candidates about instructions, rubrics, quiz mechanics, question numbers, answer choices, point values, deadlines, document structure, or other non-subject scaffolding.
+- Convert a useful assessment-derived candidate into a clean, reusable subject concept only when its supplied summary, key points, and source excerpts contain enough evidence. Remove all question formatting and commands to the student. Otherwise delete it.
+- Delete candidates whose excerpts are garbled, fragmentary, in broken reading order, or do not support every factual claim. Never fill gaps from outside knowledge.
+- Delete vague labels, incomplete thoughts, trivial facts, and candidates that would not produce a worthwhile spaced-repetition question.
+- Rank by importance to the learner's instructions; drop weak material even when doing so leaves fewer than the requested count.
 - Order the final list in a sensible learning sequence (foundational ideas first).
-- Keep titles specific; keep summaries 2-4 sentences.
+- Keep titles specific and independent of their source document; keep summaries 2-4 clear instructional sentences.
 - Treat the learner's stated course, priorities, and exclusions as hard constraints. Drop off-topic candidates even if that means returning fewer than requested.
 - Preserve source support. Do not add facts that are absent from the candidate summaries, key points, and excerpts.
 """
@@ -682,7 +745,7 @@ def build_merge_prompt(
 ) -> tuple[str, str]:
     payload = json.dumps([c.to_dict() for c in candidates], ensure_ascii=False)
     user = f"""LEARNER'S INSTRUCTIONS: {instructions or "(none given)"}
-Return exactly {target} concepts (or fewer only if there are not enough distinct concepts).
+Return at most {target} concepts. Return fewer whenever candidates fail the quality rules.
 
 {CANDIDATES_MARKER}
 {payload}
@@ -697,3 +760,113 @@ def parse_concepts(data: dict[str, Any]) -> list[ConceptCandidate]:
         if c.title and c.summary:
             out.append(c)
     return out
+
+
+_INQUIRY_SYSTEM = """You are a source-grounded learning assistant embedded in a spaced-repetition application.
+Answer the learner's request using the supplied concept and course excerpts. Clearly say when the material does not support a claim; never fill gaps from memory. Explain in clear instructional language and do not reveal or solve an active assessment unless the supplied material itself contains the solution.
+
+When MODE is STUDY, answer the question and leave every revised_* field empty.
+When MODE is EDIT, also propose a cleaner, self-contained concept in revised_title, revised_summary, and revised_key_points. Preserve supported meaning, remove quiz/document scaffolding, and do not invent facts. The learner must explicitly apply your proposal.
+List only the 1-based SOURCE EXCERPT numbers actually used in source_refs.
+Recommend a visual only when spatial structure, a process, comparison, chart, or diagram would materially improve comprehension. Describe an instructional visual precisely and choose whether it belongs on the question, answer, or both sides. Do not recommend decorative imagery.
+"""
+
+
+def build_inquiry_prompt(
+    *,
+    mode: str,
+    question: str,
+    title: str,
+    summary: str,
+    key_points: list[str],
+    context: str = "",
+    sources: list[str] | None = None,
+) -> tuple[str, str]:
+    rendered_sources = "\n\n".join(
+        f'[{i}] """{source}"""'
+        for i, source in enumerate(sources or [], start=1)
+    ) or "(none)"
+    user = f"""MODE: {mode.upper()}
+LEARNER REQUEST: {question}
+
+CONCEPT TITLE: {title}
+SUMMARY: {summary}
+KEY POINTS:
+{_bullets(key_points)}
+COURSE CONTEXT: {context or "(none)"}
+
+SOURCE EXCERPTS:
+{rendered_sources}
+"""
+    return _INQUIRY_SYSTEM, user
+
+
+def parse_inquiry(data: dict[str, Any]) -> InquiryResult:
+    answer = str(data.get("answer", "")).strip()
+    if not answer:
+        raise PromptError("empty inquiry answer")
+    refs: list[int] = []
+    for value in data.get("source_refs", []):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0 and number not in refs:
+            refs.append(number)
+    return InquiryResult(
+        answer=answer,
+        revised_title=str(data.get("revised_title", "")).strip(),
+        revised_summary=str(data.get("revised_summary", "")).strip(),
+        revised_key_points=[
+            str(point).strip()
+            for point in data.get("revised_key_points", [])
+            if str(point).strip()
+        ],
+        source_refs=refs,
+        visual_recommended=bool(data.get("visual_recommended", False)),
+        visual_description=str(data.get("visual_description", "")).strip(),
+        visual_placement=(
+            str(data.get("visual_placement", "answer"))
+            if str(data.get("visual_placement", "answer"))
+            in {"question", "answer", "both"}
+            else "answer"
+        ),
+    )
+
+
+_VISUAL_SYSTEM = """You design one concise instructional SVG for a spaced-repetition concept.
+The visual must teach, not decorate. Choose the representation that best reduces cognitive load: a labeled process, relationship diagram, comparison, timeline, plot, hierarchy, free-body diagram, or other appropriate schematic. If the concept is not inherently visual, make a restrained concept map rather than inventing a scene.
+
+Rules:
+- Use only facts explicitly present in the concept and course context. Never add plausible domain details.
+- Focus on one learning objective and omit ornamental elements, backgrounds, logos, and clip art.
+- Use a 16:9 viewBox of 0 0 960 540, generous spacing, high contrast, and readable text at least 22px.
+- Keep labels brief. Prefer arrows, grouping, alignment, and color coding over paragraphs.
+- Do not reveal the answer on the question side; choose answer placement when labels or relationships would give it away.
+- Return standalone SVG using only svg, g, rect, circle, ellipse, line, polyline, polygon, path, text, tspan, and marker elements.
+- Do not use scripts, CSS, foreignObject, images, links, external resources, animation, filters, masks, or event handlers.
+- Include a clear alt-text description and a one-sentence rationale.
+"""
+
+
+def build_visual_prompt(
+    *, title: str, summary: str, key_points: list[str], context: str = "", request: str = ""
+) -> tuple[str, str]:
+    return _VISUAL_SYSTEM, f"""CONCEPT: {title}
+SUMMARY: {summary}
+KEY POINTS:
+{_bullets(key_points)}
+COURSE CONTEXT: {context or "(none)"}
+LEARNER'S VISUAL REQUEST: {request or "Choose the most instructionally useful visual."}
+"""
+
+
+def parse_visual(data: dict[str, Any]) -> GeneratedVisual:
+    svg = str(data.get("svg", "")).strip()
+    alt = str(data.get("alt_text", "")).strip()
+    if not svg or not alt:
+        raise PromptError("visual response is incomplete")
+    placement = str(data.get("placement", "answer"))
+    if placement not in {"question", "answer", "both"}:
+        placement = "answer"
+    return GeneratedVisual(svg, alt, placement, str(data.get("rationale", "")).strip())
