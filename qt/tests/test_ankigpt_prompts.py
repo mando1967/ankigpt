@@ -182,6 +182,9 @@ def test_extraction_prompts_filter_scaffolding_and_garbled_material() -> None:
     assert "bare question is not evidence" in system
     assert "corrupted PDF extraction" in system
     assert "Quality is more important than count" in system
+    assert "HTML/XML tags" in system
+    assert "document scaffolding, not subject matter" in system
+    assert "Return plain text only" in system
 
     merge_system, merge_user = prompts.build_merge_prompt(
         [prompts.ConceptCandidate("Question 4", "Select the best answer.")],
@@ -191,6 +194,8 @@ def test_extraction_prompts_filter_scaffolding_and_garbled_material() -> None:
     assert "strict quality gate" in merge_system
     assert "question formatting" in merge_system
     assert "garbled" in merge_system
+    assert "markup inherited from candidates" in merge_system
+    assert "return plain text" in merge_system
     assert "Return at most 20 concepts" in merge_user
 
 

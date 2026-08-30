@@ -196,7 +196,7 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
                 "settings",
                 "system",
                 "about",
-            } or route.startswith(("concept:", "course:", "note:")):
+            } or route.startswith(("concept:", "concepts:", "course:", "note:")):
                 _shell_route = route
                 context.refresh()
             return (True, None)
@@ -447,10 +447,13 @@ def _concept_records(mw: AnkiQt) -> list[tuple[Any, ...]]:
     if not notetype:
         return []
     rows = mw.col.db.all(
-        "select id, flds from notes where mid = ? order by id", notetype["id"]
+        """select n.id, n.flds, min(c.did)
+        from notes n join cards c on c.nid = n.id
+        where n.mid = ? group by n.id, n.flds order by n.id""",
+        notetype["id"],
     )
     records = []
-    for note_id, packed_fields in rows:
+    for note_id, packed_fields, deck_id in rows:
         fields = split_fields(packed_fields)
         if len(fields) < 3:
             continue
@@ -464,6 +467,7 @@ def _concept_records(mw: AnkiQt) -> list[tuple[Any, ...]]:
                 field_to_text(note[FIELD_VISUAL]),
                 field_to_text(note[FIELD_VISUAL_ALT]),
                 field_to_text(note[FIELD_VISUAL_PLACEMENT]) or "answer",
+                int(deck_id),
             )
         )
     return records
@@ -508,6 +512,7 @@ def _save_note_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     try:
         payload = json.loads(unquote(message.split(":", 2)[2]))
         note_id = NoteId(int(payload["nid"]))
+        deck_id = int(payload.get("deck_id", 0))
         fields = payload["fields"]
         if not isinstance(fields, dict):
             return
@@ -602,7 +607,7 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
 
     def done(_changes: object) -> None:
         global _shell_route
-        _shell_route = "concepts"
+        _shell_route = f"concepts:{deck_id}" if deck_id else "concepts"
         browser.refresh()  # type: ignore[attr-defined]
 
     CollectionOp(parent=mw, op=save).success(done).run_in_background()

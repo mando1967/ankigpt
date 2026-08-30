@@ -605,6 +605,8 @@ For each concept:
 - "source_excerpt": a verbatim quote (up to ~500 characters) from the text that best supports the concept.
 
 Quality rules:
+- Treat HTML/XML tags, escaped markup, CSS, JavaScript, Markdown control syntax, template syntax, and similar machine or presentation content as document scaffolding, not subject matter. Use only the human-readable meaning they contain. Never create a concept about the markup itself or copy markup into a concept field.
+- Return plain text only in every concept field. Do not emit tags, HTML entities used as markup, Markdown formatting, code fences, style rules, scripts, or template artifacts. Preserve meaningful mathematical and scientific notation as plain text.
 - Prefer concepts that match the learner's instructions. Skip scaffolding, boilerplate, administrative text, and trivia. Do not duplicate concepts.
 - Never make a concept about document directions or quiz mechanics (for example "select two answers," "show your work," a point value, or a submission deadline).
 - When a quiz problem includes a supported principle or an explained solution, extract that reusable principle in clean instructional language. Do not copy the question format, question number, answer choices, blanks, commands to the student, or grading language into the title, summary, or key points.
@@ -735,6 +737,7 @@ You receive candidate concepts (possibly overlapping, from different parts of th
 - Rank by importance to the learner's instructions; drop weak material even when doing so leaves fewer than the requested count.
 - Order the final list in a sensible learning sequence (foundational ideas first).
 - Keep titles specific and independent of their source document; keep summaries 2-4 clear instructional sentences.
+- Treat markup inherited from candidates as document scaffolding. Keep only its supported human-readable meaning, and return plain text in titles, summaries, key points, and source excerpts—never HTML/XML tags, escaped markup, Markdown formatting, code fences, CSS, JavaScript, or template artifacts.
 - Treat the learner's stated course, priorities, and exclusions as hard constraints. Drop off-topic candidates even if that means returning fewer than requested.
 - Preserve source support. Do not add facts that are absent from the candidate summaries, key points, and excerpts.
 """

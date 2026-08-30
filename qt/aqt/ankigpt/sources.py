@@ -148,7 +148,13 @@ class SourceViewerDialog(QDialog):
                 chars=f"{len(doc.text):,}", sections=str(len(doc.sections)), pages=pages
             )
         )
-        self.open_btn.setEnabled(bool(doc.path) and os.path.exists(doc.path))
+        self.open_btn.setEnabled(
+            bool(doc.path)
+            and (
+                doc.path.startswith(("http://", "https://"))
+                or os.path.exists(doc.path)
+            )
+        )
         self.next_btn.setVisible(bool(highlights))
         self._highlight_pos = -1
         if highlights:
@@ -163,10 +169,15 @@ class SourceViewerDialog(QDialog):
 
     def open_original(self) -> None:
         doc = self._current_doc()
-        if doc is None or not doc.path or not os.path.exists(doc.path):
+        if doc is None or not doc.path:
             tooltip(tr.ankigpt_original_missing(), parent=self)
             return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(doc.path))
+        if doc.path.startswith(("http://", "https://")):
+            QDesktopServices.openUrl(QUrl(doc.path))
+        elif os.path.exists(doc.path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(doc.path))
+        else:
+            tooltip(tr.ankigpt_original_missing(), parent=self)
 
     def reject(self) -> None:
         saveGeom(self, "ankigptSources")

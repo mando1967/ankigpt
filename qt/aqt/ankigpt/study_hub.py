@@ -58,6 +58,17 @@ def render_study_hub(
         settings or {},
         notice,
     )
+    concepts_destination = "concepts"
+    if route.startswith(("course:", "concepts:")):
+        concepts_destination = f"concepts:{route.split(':', 1)[1]}"
+    elif route.startswith("concept:"):
+        try:
+            note_id = int(route.split(":", 1)[1])
+        except ValueError:
+            note_id = 0
+        concept = next((item for item in (concepts or []) if item[0] == note_id), None)
+        if concept and len(concept) > 7:
+            concepts_destination = f"concepts:{int(concept[7])}"
     return f"""
 <tr><td colspan="9" class="ankigpt-hub-cell">
 <style>{_CSS}</style>
@@ -67,7 +78,7 @@ def render_study_hub(
     <button class="nav-item {_active(route, "home")}" onclick="pycmd('ankigpt:route:home')">⌂ <span>Home</span></button>
     <button class="nav-item" onclick="pycmd('ankigpt')">＋ <span>Create Course</span></button>
     <button class="nav-item" onclick="{continue_action}">▷ <span>Study</span></button>
-    <button class="nav-item {_active(route, "concepts")}" onclick="pycmd('ankigpt:route:concepts')">▣ <span>Concepts</span></button>
+    <button class="nav-item {_active(route, "concepts")}" onclick="pycmd('ankigpt:route:{concepts_destination}')">▣ <span>Concepts</span></button>
     <button class="nav-item {_active(route, "library")}" onclick="pycmd('ankigpt:route:library')">▤ <span>Card Library</span></button>
     <button class="nav-item {_active(route, "progress")}" onclick="pycmd('ankigpt:route:progress')">⌁ <span>Progress</span></button>
     <div class="nav-spacer"></div>
@@ -83,7 +94,7 @@ def render_study_hub(
 
 
 def _active(route: str, expected: str) -> str:
-    return "active" if route == expected else ""
+    return "active" if route == expected or route.startswith(f"{expected}:") else ""
 
 
 def _route_content(  # noqa: PLR0911 - each shell destination has distinct markup
@@ -156,7 +167,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
             <div class="metric"><span>Status</span><strong>{"Ready" if total else "Done"}</strong></div></div>
             <section class="content-card"><div class="section-heading"><div><div class="hub-eyebrow">NEXT STEP</div><h2>Keep the momentum</h2></div></div>
             <p>Study with source-aware answers, or inspect and refine the concepts generated for this course.</p>
-            <div class="hero-actions"><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts')">Browse concepts</button>
+            <div class="hero-actions"><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts:{deck_id}')">Browse concepts</button>
             <button class="hub-secondary" onclick="pycmd('ankigpt:course-sources:{deck_id}')">Open source library</button>
             <button class="hub-danger" onclick="pycmd('ankigpt:delete-course:{deck_id}')">Delete course</button></div></section></main>"""
     if route.startswith("concept:"):
@@ -167,6 +178,10 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         concept = next((item for item in concepts if item[0] == note_id), None)
         if concept:
             nid, title, summary, points = concept[:4]
+            concept_deck_id = int(concept[7]) if len(concept) > 7 else None
+            concepts_route = (
+                f"concepts:{concept_deck_id}" if concept_deck_id else "concepts"
+            )
             visual, visual_alt, visual_placement = (
                 (*concept[4:7], "", "", "answer")[:3]
                 if len(concept) > 4
@@ -186,7 +201,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
                     ("both", "Both sides"),
                 )
             )
-            return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:concepts')">← All concepts</button>
+            return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:{concepts_route}')">← Course concepts</button>
             <div class="page-head"><div class="hub-eyebrow">CONCEPT EDITOR</div><h1>Edit concept</h1>
             <p>Refine the material used to generate future study questions.</p></div>
             <section class="content-card concept-form"><label>Title<input id="concept-title" value="{html.escape(title, quote=True)}"></label>
@@ -196,23 +211,45 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
             <label>Image description <small>Explain what the visual shows. Screen readers use this description, and Ask AI uses it to understand the image.</small><input id="concept-visual-alt" value="{html.escape(visual_alt, quote=True)}" placeholder="Example: A force arrow acts downward at distance d from the pivot"></label>
             <label>Show visual<select id="concept-visual-placement">{options}</select></label>
             <div class="hero-actions"><button class="hub-primary" onclick="ankigptGenerateVisual()">✦ Generate AI visual</button><button class="hub-secondary" onclick="pycmd('ankigpt:attach-visual')">Attach or replace image</button><button class="hub-secondary" onclick="ankigptRemoveVisual()">Remove visual</button></div></section>
-            <div class="form-actions"><button class="hub-secondary" onclick="ankigptImproveConcept()">✦ Improve with AI</button><button class="hub-secondary" onclick="pycmd('ankigpt:route:concepts')">Cancel</button>
+            <div class="form-actions"><button class="hub-secondary" onclick="ankigptImproveConcept()">✦ Improve with AI</button><button class="hub-secondary" onclick="pycmd('ankigpt:route:{concepts_route}')">Cancel</button>
             <button class="hub-primary" onclick="ankigptSaveConcept()">Save changes</button></div></section>
-            <script>function ankigptPayload(){{return {{nid:{nid},title:document.getElementById('concept-title').value,summary:document.getElementById('concept-summary').value,points:document.getElementById('concept-points').value,visual:document.getElementById('concept-visual').value,visual_alt:document.getElementById('concept-visual-alt').value,visual_placement:document.getElementById('concept-visual-placement').value}}}} function ankigptSaveConcept(){{pycmd('ankigpt:save-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptImproveConcept(){{pycmd('ankigpt:assist-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptGenerateVisual(){{pycmd('ankigpt:generate-visual:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptRemoveVisual(){{document.getElementById('concept-visual').value='';const p=document.querySelector('.visual-preview');if(p)p.outerHTML='<div class="visual-empty">No visual attached</div>';}}</script></main>"""
-    if route == "concepts":
+            <script>function ankigptPayload(){{return {{nid:{nid},deck_id:{concept_deck_id or 0},title:document.getElementById('concept-title').value,summary:document.getElementById('concept-summary').value,points:document.getElementById('concept-points').value,visual:document.getElementById('concept-visual').value,visual_alt:document.getElementById('concept-visual-alt').value,visual_placement:document.getElementById('concept-visual-placement').value}}}} function ankigptSaveConcept(){{pycmd('ankigpt:save-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptImproveConcept(){{pycmd('ankigpt:assist-concept:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptGenerateVisual(){{pycmd('ankigpt:generate-visual:'+encodeURIComponent(JSON.stringify(ankigptPayload())))}} function ankigptRemoveVisual(){{document.getElementById('concept-visual').value='';const p=document.querySelector('.visual-preview');if(p)p.outerHTML='<div class="visual-empty">No visual attached</div>';}}</script></main>"""
+    if route == "concepts" or route.startswith("concepts:"):
+        deck_id = None
+        if route.startswith("concepts:"):
+            try:
+                deck_id = int(route.split(":", 1)[1])
+            except ValueError:
+                deck_id = None
+        visible_concepts = [
+            concept
+            for concept in concepts
+            if deck_id is None or (len(concept) > 7 and concept[7] == deck_id)
+        ]
+        deck = next(
+            (item for item in decks if deck_id is not None and int(item.deck_id) == deck_id),
+            None,
+        )
+        heading = f"{html.escape(deck.name)} concepts" if deck else "Your concepts"
+        back = (
+            f"<button class=\"text-back\" onclick=\"pycmd('ankigpt:route:course:{deck_id}')\">← Course</button>"
+            if deck
+            else ""
+        )
         cards = (
             "".join(
-                f"""<button class="course-tile" onclick="pycmd('ankigpt:route:concept:{nid}')">
+                f"""<button class="course-tile" data-search="{html.escape(f'{title} {summary}', quote=True).casefold()}" onclick="pycmd('ankigpt:route:concept:{nid}')">
             <span class="course-icon">◇</span><span><strong>{html.escape(title)}</strong>
             <small>{html.escape(summary[:110])}</small></span><b>›</b></button>"""
-                for nid, title, summary, _points, *_visual in concepts
+                for nid, title, summary, _points, *_rest in visible_concepts
             )
-            or '<div class="empty-card">Create a course to begin building concepts.</div>'
+            or '<div class="empty-card">No concepts found for this course.</div>'
         )
-        return f"""<main class="hub-main"><div class="page-head"><div class="hub-eyebrow">KNOWLEDGE LIBRARY</div>
-        <h1>Your concepts</h1><p>Browse concepts by course and continue refining what you want to learn.</p></div>
-        <div class="content-card"><div class="search-shell">⌕ <span>Search concepts and courses</span></div>
-        <div class="course-grid">{cards}</div></div></main>"""
+        return f"""<main class="hub-main">{back}<div class="page-head"><div class="hub-eyebrow">KNOWLEDGE LIBRARY</div>
+        <h1>{heading}</h1><p>Browse concepts by course and continue refining what you want to learn.</p></div>
+        <div class="content-card"><label class="search-shell">⌕ <input id="concept-search" type="search" placeholder="Search concepts" oninput="ankigptFilterConcepts(this.value)"><span id="concept-search-status">Showing {len(visible_concepts)} of {len(visible_concepts)}</span></label>
+        <div class="course-grid" id="concept-grid">{cards}</div><div class="empty-card" id="concept-search-empty" hidden>No matching concepts.</div></div>
+        <script>function ankigptFilterConcepts(value){{const query=value.trim().toLocaleLowerCase();const cards=[...document.querySelectorAll('#concept-grid .course-tile')];let shown=0;cards.forEach(card=>{{const visible=!query||card.dataset.search.includes(query);card.hidden=!visible;if(visible)shown++;}});document.getElementById('concept-search-status').textContent='Showing '+shown+' of '+cards.length;document.getElementById('concept-search-empty').hidden=shown!==0;}}</script></main>"""
     if route == "progress":
         new = sum(deck.new_count for deck in decks)
         learning = sum(deck.learn_count for deck in decks)
@@ -347,7 +384,7 @@ center > table { width:100%; max-width:none; }
 .hub-section { margin-top:28px; }.section-heading { display:flex; align-items:end; justify-content:space-between; margin-bottom:11px; }.section-heading h2 { margin:4px 0 0; font-size:22px; color:#15234a; }.today { color:#718096; font-size:12px; }
 .deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
-.page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }
+.page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { display:flex; align-items:center; gap:8px; padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.search-shell input { flex:1; min-width:0; padding:0; color:#263653; background:transparent; border:0; outline:0; font:inherit; }.search-shell span { white-space:nowrap; font-size:12px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile[hidden],.empty-card[hidden] { display:none; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }
 .migration-note { display:inline-block; padding:10px 12px; color:#4e5f7d; background:#f2f5fa; border-radius:8px; font-size:12px; }
 .text-back { padding:11px 16px; color:#3157d5; background:#f7f9ff; border:1px solid #cfd9e8; border-radius:9px; font-size:15px; font-weight:700; line-height:1.2; cursor:pointer; }.text-back:hover { color:#fff; background:#3157d5; border-color:#3157d5; }.concept-form { max-width:780px; }.concept-form label { display:block; margin-bottom:17px; color:#34435f; font-size:12px; font-weight:700; }.concept-form label small { color:#8490a4; font-weight:400; }.concept-form input,.concept-form textarea { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:11px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; font:inherit; font-size:14px; resize:vertical; }.concept-form input:focus,.concept-form textarea:focus { outline:2px solid #b9cbfa; border-color:#5c7fdb; }.form-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:5px; }
 .concept-form select { display:block; box-sizing:border-box; width:100%; margin-top:7px; padding:10px 12px; color:#1e2c48; background:#fbfcfe; border:1px solid #d5dce7; border-radius:8px; }.settings-inline { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.shell-notice { margin-bottom:16px; padding:12px 14px; color:#265c42; background:#eaf7ef; border:1px solid #bfe3cd; border-radius:9px; }

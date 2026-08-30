@@ -118,8 +118,33 @@ def test_shell_routes_stay_in_the_new_interface() -> None:
     assert "ankigpt:course-sources:10" in course
     assert "Delete course" in course
     assert "ankigpt:delete-course:10" in course
+    assert "ankigpt:route:concepts:10" in course
     assert "Card Library" in library and "What is a moment?" in library
     assert "ankigpt:route:note:200" in library
     assert "Edit note" in editor_note and "ankigpt:save-note" in editor_note
     assert "Add a study card" in add_card and "ankigpt:add-card" in add_card
     assert "ankigpt:advanced" not in concepts + progress + settings
+
+
+def test_course_concepts_are_scoped_and_searchable() -> None:
+    root = SimpleNamespace(children=[node("Statics", 10), node("Thermo", 11)])
+    records = [
+        (100, "Moment", "Turning effect", ["M = Fd"], "", "", "answer", 10),
+        (101, "Entropy", "State function", ["dS"], "", "", "answer", 11),
+    ]
+
+    page = render_study_hub(root, "Today", "concepts:10", records)
+
+    assert "Statics concepts" in page
+    assert page.count("ankigpt:route:concepts:10") >= 1
+    assert "Moment" in page
+    assert "Entropy" not in page
+    assert 'id="concept-search"' in page
+    assert 'id="concept-search-status"' in page
+    assert "Showing 1 of 1" in page
+    assert "ankigptFilterConcepts" in page
+    assert ".course-tile[hidden]" in page
+
+    editor = render_study_hub(root, "Today", "concept:100", records)
+    assert "ankigpt:route:concepts:10" in editor
+    assert "deck_id:10" in editor

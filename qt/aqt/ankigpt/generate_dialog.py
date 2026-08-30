@@ -25,6 +25,7 @@ from aqt.ankigpt.settings import (
     save_deck_settings,
 )
 from aqt.ankigpt.study_sources import CourseBrief, discover_sources, total_size
+from aqt.ankigpt.url_source import DownloadedSource, download_url_source
 from aqt.operations import CollectionOp, QueryOp
 from aqt.qt import *
 from aqt.utils import (
@@ -79,6 +80,7 @@ class CreateConceptDeckDialog(QDialog):
         super().__init__(parent or mw)
         self.mw = mw
         self.files: list[str] = []
+        self._remote_sources: dict[str, DownloadedSource] = {}
         self.candidates: list[ConceptCandidate] = []
         self._cancel_requested = False
         self.setWindowTitle(tr.ankigpt_create_deck_title())
@@ -193,12 +195,16 @@ class CreateConceptDeckDialog(QDialog):
         qconnect(add_btn.clicked, self.on_add_files)
         folder_btn = QPushButton(tr.ankigpt_add_folder())
         qconnect(folder_btn.clicked, self.on_add_folder)
+        url_btn = QPushButton(tr.ankigpt_add_url())
+        url_btn.setToolTip(tr.ankigpt_add_url_tooltip())
+        qconnect(url_btn.clicked, self.on_add_url)
         remove_btn = QPushButton(tr.ankigpt_remove_file())
         qconnect(remove_btn.clicked, self.on_remove_file)
         clear_btn = QPushButton(tr.ankigpt_clear_files())
         qconnect(clear_btn.clicked, self.on_clear_files)
         btns.addWidget(add_btn)
         btns.addWidget(folder_btn)
+        btns.addWidget(url_btn)
         btns.addWidget(remove_btn)
         btns.addWidget(clear_btn)
         source_row = QVBoxLayout()
@@ -455,6 +461,33 @@ class CreateConceptDeckDialog(QDialog):
         if path:
             self._add_source_paths([path])
 
+    def on_add_url(self) -> None:
+        url, accepted = QInputDialog.getText(
+            self, tr.ankigpt_add_url(), tr.ankigpt_source_url()
+        )
+        if not accepted or not url.strip():
+            return
+        self.setEnabled(False)
+
+        def done(source: DownloadedSource) -> None:
+            self.setEnabled(True)
+            self._remote_sources[source.path] = source
+            self._add_source_paths([source.path])
+            item = self.file_list.item(self.file_list.count() - 1)
+            if item:
+                item.setText(source.name)
+                item.setToolTip(source.url)
+
+        def failed(exc: Exception) -> None:
+            self.setEnabled(True)
+            showWarning(tr.ankigpt_url_failed(error=str(exc)), self)
+
+        QueryOp(
+            parent=self,
+            op=lambda _col: download_url_source(url),
+            success=done,
+        ).failure(failed).without_collection().run_in_background()
+
     def _add_source_paths(self, paths: Sequence[str]) -> None:
         discovered = discover_sources(paths)
         existing = {os.path.normcase(os.path.normpath(path)) for path in self.files}
@@ -488,14 +521,23 @@ class CreateConceptDeckDialog(QDialog):
         )
         for row in rows:
             self.file_list.takeItem(row)
-            del self.files[row]
+            self._remove_remote_file(self.files.pop(row))
         self._suggest_target()
         self._update_source_summary()
 
     def on_clear_files(self) -> None:
+        for path in self.files:
+            self._remove_remote_file(path)
         self.files.clear()
         self.file_list.clear()
         self._update_source_summary()
+
+    def _remove_remote_file(self, path: str) -> None:
+        if self._remote_sources.pop(path, None):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def _update_source_summary(self) -> None:
         if not self.files:
@@ -567,6 +609,9 @@ class CreateConceptDeckDialog(QDialog):
                 if self._cancel_requested:
                     raise extract.Cancelled()
                 doc = extract.extract_text(path)
+                if remote := self._remote_sources.get(path):
+                    doc.path = remote.url
+                    doc.name = remote.name
                 docs.append(doc)
                 log(f"{doc.name}: {doc.total_chars:,} characters")
             result = extract.extract_concepts(
@@ -729,10 +774,14 @@ class CreateConceptDeckDialog(QDialog):
             pass
 
     def reject(self) -> None:
+        for path in list(self._remote_sources):
+            self._remove_remote_file(path)
         saveGeom(self, "ankigptCreateDeck")
         super().reject()
 
     def closeEvent(self, evt: QCloseEvent | None) -> None:
+        for path in list(self._remote_sources):
+            self._remove_remote_file(path)
         saveGeom(self, "ankigptCreateDeck")
         super().closeEvent(evt)
 
