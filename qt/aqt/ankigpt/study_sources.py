@@ -85,3 +85,16 @@ def total_size(paths: Iterable[str]) -> int:
         except OSError:
             pass
     return total
+
+
+def document_deck_names(root: str, document_names: Iterable[str]) -> list[str]:
+    """Stable, collision-safe child deck names for a group of documents."""
+    used: dict[str, int] = {}
+    destinations: list[str] = []
+    for name in document_names:
+        stem = os.path.splitext(os.path.basename(name))[0].strip().replace("::", " - ")
+        stem = stem or "Untitled document"
+        used[stem] = used.get(stem, 0) + 1
+        suffix = f" ({used[stem]})" if used[stem] > 1 else ""
+        destinations.append(f"{root}::{stem}{suffix}")
+    return destinations

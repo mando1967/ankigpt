@@ -41,7 +41,7 @@ def render_study_hub(
         if first_due
         else "pycmd('ankigpt')"
     )
-    rows = "".join(_deck_row(deck) for deck in decks)
+    rows = _deck_rows(root.children)
     if not rows:
         rows = """<tr><td colspan="5" class="hub-empty">
         No courses yet. Create your first AI course from your materials.
@@ -347,20 +347,88 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         <div><div class="hub-eyebrow">COURSES</div><h2>Your decks</h2></div>
         <div class="today">{html.escape(studied_today)}</div>
       </div>
-      <div class="deck-card"><table class="hub-table">
+      <div class="deck-picker-actions" role="group" aria-label="Action for selected deck">
+        <label><input type="radio" name="deck-action" value="open" checked> Open</label>
+        <label><input type="radio" name="deck-action" value="study"> Study</label>
+        <label><input type="radio" name="deck-action" value="edit"> Edit</label>
+        <button id="deck-go" class="hub-primary" type="button" disabled onclick="ankigptDeckGo()">GO</button>
+      </div>
+      <div class="deck-card"><table class="hub-table deck-tree">
         <thead><tr><th>Deck</th><th>New</th><th>Learning</th><th>Review</th><th>Status</th></tr></thead>
         <tbody>{rows}</tbody>
       </table></div>
+      <script>
+      let ankigptSelectedDeck = null;
+      function ankigptSelectDeck(row) {{
+        document.querySelectorAll('.deck-tree tr.selected').forEach(item => item.classList.remove('selected'));
+        row.classList.add('selected');
+        ankigptSelectedDeck = row.dataset.deckId;
+        document.getElementById('deck-go').disabled = false;
+      }}
+      function ankigptToggleDeck(button, event) {{
+        event.stopPropagation();
+        const row = button.closest('tr');
+        const id = row.dataset.deckId;
+        const opening = row.getAttribute('aria-expanded') !== 'true';
+        row.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        button.textContent = opening ? '▾' : '▸';
+        document.querySelectorAll(`.deck-tree tr[data-parent-id="${{id}}"]`).forEach(child => {{
+          child.hidden = !opening;
+          if (!opening) ankigptCollapseDeck(child);
+        }});
+      }}
+      function ankigptCollapseDeck(row) {{
+        row.setAttribute('aria-expanded', 'false');
+        const button = row.querySelector('.deck-disclosure');
+        if (button) button.textContent = '▸';
+        document.querySelectorAll(`.deck-tree tr[data-parent-id="${{row.dataset.deckId}}"]`).forEach(child => {{
+          child.hidden = true;
+          ankigptCollapseDeck(child);
+        }});
+      }}
+      function ankigptDeckGo() {{
+        if (!ankigptSelectedDeck) return;
+        const action = document.querySelector('input[name="deck-action"]:checked').value;
+        const command = action === 'study'
+          ? `ankigpt:study:${{ankigptSelectedDeck}}`
+          : action === 'edit'
+            ? `ankigpt:route:concepts:${{ankigptSelectedDeck}}`
+            : `ankigpt:route:course:${{ankigptSelectedDeck}}`;
+        pycmd(command);
+      }}
+      </script>
     </section>
   </main>"""
 
 
-def _deck_row(deck: Any) -> str:
+def _deck_rows(
+    nodes: Iterable[Any], parent_id: int | None = None, depth: int = 0
+) -> str:
+    return "".join(
+        _deck_row(deck, parent_id=parent_id, depth=depth)
+        + _deck_rows(deck.children, parent_id=int(deck.deck_id), depth=depth + 1)
+        for deck in nodes
+    )
+
+
+def _deck_row(deck: Any, parent_id: int | None, depth: int) -> str:
     due = deck.new_count + deck.learn_count + deck.review_count
     status = f"{due} due" if due else "Up to date"
     status_class = "due" if due else "ready"
-    return f"""<tr onclick="pycmd('ankigpt:route:course:{int(deck.deck_id)}')">
-      <td><strong>{html.escape(deck.name)}</strong></td>
+    deck_id = int(deck.deck_id)
+    parent_attr = f' data-parent-id="{parent_id}"' if parent_id is not None else ""
+    hidden = " hidden" if parent_id is not None else ""
+    expandable = bool(deck.children)
+    expanded_attr = ' aria-expanded="false"' if expandable else ""
+    disclosure = (
+        '<button class="deck-disclosure" type="button" aria-label="Expand" '
+        'onclick="ankigptToggleDeck(this, event)">▸</button>'
+        if expandable
+        else '<span class="deck-disclosure-spacer"></span>'
+    )
+    kind = ("Category" if depth == 0 else "Subcategory") if expandable else "Deck"
+    return f"""<tr data-deck-id="{deck_id}"{parent_attr}{expanded_attr}{hidden} onclick="ankigptSelectDeck(this)">
+      <td><span class="deck-name" style="--deck-depth:{depth}">{disclosure}<strong>{html.escape(deck.name)}</strong><small>{kind}</small></span></td>
       <td>{deck.new_count}</td><td>{deck.learn_count}</td><td>{deck.review_count}</td>
       <td><span class="status {status_class}"><i></i>{status}</span></td>
     </tr>"""
@@ -382,7 +450,8 @@ center > table { width:100%; max-width:none; }
 .hero-actions { display:flex; gap:10px; flex-wrap:wrap; }.hub-primary,.hub-secondary { padding:11px 18px; border-radius:8px; font-weight:700; cursor:pointer; }.hub-primary { color:#fff; background:#2367e8; border:1px solid #2367e8; }.hub-primary:hover { background:#1955c6; }.hub-secondary { color:#24406d; background:#fff; border:1px solid #cfd9e8; }.hub-art { width:100%; max-height:190px; }
 .hub-danger { padding:11px 18px; color:#b42318; background:#fff; border:1px solid #f1b5b0; border-radius:8px; font-weight:700; cursor:pointer; }.hub-danger:hover { color:#fff; background:#b42318; border-color:#b42318; }
 .hub-section { margin-top:28px; }.section-heading { display:flex; align-items:end; justify-content:space-between; margin-bottom:11px; }.section-heading h2 { margin:4px 0 0; font-size:22px; color:#15234a; }.today { color:#718096; font-size:12px; }
-.deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }
+.deck-picker-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; }.deck-picker-actions label { padding:8px 11px; color:#34435f; background:#f7f9fc; border:1px solid #dce3ec; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }.deck-picker-actions input { margin:0 5px 0 0; vertical-align:-1px; }.deck-picker-actions .hub-primary { margin-left:5px; padding:9px 22px; }.hub-primary:disabled { cursor:not-allowed; opacity:.45; }
+.deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table tbody tr.selected { background:#e8f0ff; box-shadow:inset 3px 0 #2367e8; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }.deck-name { display:flex; align-items:center; gap:7px; padding-left:calc(var(--deck-depth) * 21px); }.deck-name small { margin-left:auto; color:#8a94a6; font-size:10px; font-weight:650; text-transform:uppercase; }.deck-disclosure { display:grid; place-items:center; width:22px; height:22px; padding:0; color:#3157d5; background:transparent; border:0; border-radius:5px; cursor:pointer; }.deck-disclosure:hover { background:#dce7ff; }.deck-disclosure-spacer { width:22px; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
 .page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { display:flex; align-items:center; gap:8px; padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.search-shell input { flex:1; min-width:0; padding:0; color:#263653; background:transparent; border:0; outline:0; font:inherit; }.search-shell span { white-space:nowrap; font-size:12px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile[hidden],.empty-card[hidden] { display:none; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }
 .migration-note { display:inline-block; padding:10px 12px; color:#4e5f7d; background:#f2f5fa; border-radius:8px; font-size:12px; }

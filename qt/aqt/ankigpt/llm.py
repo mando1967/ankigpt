@@ -177,7 +177,7 @@ class FakeLLMClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
 
-    def complete_json(
+    def complete_json(  # noqa: PLR0911 - one deterministic response per schema
         self,
         system: str,
         user: str,
@@ -195,6 +195,22 @@ class FakeLLMClient:
             return self._grade(user)
         if schema_name == "plan_reading":
             return self._plan(user)
+        if schema_name == "classify_book_structure":
+            headings = []
+            for match in re.finditer(
+                r"^\[(\d+)\].*suggested=(chapter|section) title=(.*)$",
+                user,
+                re.MULTILINE,
+            ):
+                headings.append(
+                    {
+                        "index": int(match.group(1)),
+                        "kind": match.group(2),
+                        "title": match.group(3).strip(),
+                        "confidence": 0.95,
+                    }
+                )
+            return {"headings": headings}
         if schema_name == "lookup_sources":
             candidates = user.split(prompts.CANDIDATE_SECTIONS_MARKER, 1)[-1]
             picks = [1] if re.search(r"^\[1\]", candidates, re.MULTILINE) else []
@@ -209,11 +225,15 @@ class FakeLLMClient:
             return {
                 "answer": f"A grounded explanation of {title}.",
                 "revised_title": title if editing else "",
-                "revised_summary": f"A clearer explanation of {title}." if editing else "",
+                "revised_summary": f"A clearer explanation of {title}."
+                if editing
+                else "",
                 "revised_key_points": [f"Core idea of {title}"] if editing else [],
                 "source_refs": [1] if "[1]" in user else [],
                 "visual_recommended": editing,
-                "visual_description": f"A simple labeled diagram of {title}." if editing else "",
+                "visual_description": f"A simple labeled diagram of {title}."
+                if editing
+                else "",
                 "visual_placement": "answer",
             }
         if schema_name == "generate_visual":

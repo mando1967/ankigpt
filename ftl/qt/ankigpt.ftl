@@ -17,6 +17,11 @@ ankigpt-review-concepts-subtitle = Keep only useful, on-target concepts. You can
 ankigpt-documents = Documents
 ankigpt-study-materials = Study Materials
 ankigpt-study-materials-intro = Add course files, a folder, or a web URL. Folders are searched recursively, including locally synchronized OneDrive folders. You can also drag files or folders here.
+ankigpt-book-source = This source is a book
+ankigpt-book-source-tooltip = Detect chapters and sections, review the structure, and create a separate deck for each selected unit.
+ankigpt-nonbook-organization = Multiple sources
+ankigpt-nonbook-combined = One combined deck
+ankigpt-nonbook-per-document = One deck per document
 ankigpt-drop-sources = Drop files or folders here
 ankigpt-add-files = Add Files...
 ankigpt-add-folder = Add Folder...
@@ -33,8 +38,11 @@ ankigpt-study-material-summary =
        *[other] { $count } documents selected ({ $size })
     }
 ankigpt-sources-skipped = Skipped { $unsupported } unsupported and { $missing } missing files.
-ankigpt-deck-name = Deck
-ankigpt-subject = Course or subject
+ankigpt-deck-name = Course or category
+ankigpt-subcategory = Subcategory
+ankigpt-subcategory-placeholder = Required, e.g. Cars or Week 1
+ankigpt-book-title-placeholder = Book title (automatically suggested from the source)
+ankigpt-subject = Learning subject
 ankigpt-subject-placeholder = e.g. Engineering Statics
 ankigpt-learning-level = Learning level
 ankigpt-level-introductory = Introductory
@@ -54,6 +62,14 @@ ankigpt-additional-guidance-placeholder = Anything else the AI should know about
 ankigpt-instructions = Instructions
 ankigpt-instructions-placeholder = Describe the course or what to focus on, e.g. "Intro to Microeconomics, weeks 1-6. Focus on definitions and the causal mechanisms behind each model."
 ankigpt-target-count = Number of concepts
+ankigpt-book-deck-granularity = Create decks
+ankigpt-book-choose-granularity = Select chapter or section decks...
+ankigpt-book-per-chapter = One per chapter
+ankigpt-book-per-section = One per section within each chapter
+ankigpt-book-choose-granularity-warning = Choose whether to create one deck per chapter or one deck per section.
+ankigpt-book-concept-count = Concepts per deck
+ankigpt-book-count-automatic = Automatic — based on chapter or section size
+ankigpt-book-count-fixed = Fixed — use Number of concepts
 ankigpt-grading-mode = Grading mode
 ankigpt-mode-self = Self-grade
 ankigpt-mode-typed = Typed answer, graded by AI
@@ -76,15 +92,46 @@ ankigpt-created-notes =
        *[other] { $count } concepts added to "{ $deck }".
     }
 ankigpt-no-files = Please add at least one document.
-ankigpt-no-deck-name = Please enter a deck name.
+ankigpt-no-deck-name = Please enter a course or category name.
+ankigpt-no-subcategory = Please enter a subcategory name.
+ankigpt-no-book-title = Please enter or confirm the book title.
 ankigpt-nothing-selected = Select at least one concept.
 ankigpt-no-concepts-found = No concepts could be extracted from these documents.
 ankigpt-extraction-failed = Concept extraction failed: { $error }
 ankigpt-unsupported-file = Unsupported file type: { $name }
 ankigpt-column-title = Title
+ankigpt-column-deck = Destination deck
 ankigpt-column-summary = Summary
 ankigpt-column-key-points = Key points
 ankigpt-file-filter = Documents (*.pdf *.txt *.md *.docx)
+
+## Book structure review
+ankigpt-step-book-structure = STEP 2 OF 4  ·  BOOK STRUCTURE
+ankigpt-review-book-structure = Review chapters and sections
+ankigpt-review-book-structure-subtitle = Rename detected entries, uncheck material to exclude it, or merge and split entries before concept generation.
+ankigpt-book-structure-title = Chapter or section
+ankigpt-book-structure-size = Characters
+ankigpt-book-structure-concepts = Automatic concepts
+ankigpt-book-structure-confidence = Confidence
+ankigpt-book-structure-preview = Beginning: { $beginning }
+    Ending: { $ending }
+ankigpt-book-structure-fallback = AI outline classification was unavailable, so locally detected headings are shown for review.
+ankigpt-book-merge = Merge Selected
+ankigpt-book-split = Split Selected
+ankigpt-book-merge-selection = Select two or more adjacent chapters or sections at the same level.
+ankigpt-book-split-selection = Select one chapter or section without children that contains enough text to split.
+ankigpt-book-one-source = Book generation accepts exactly one source.
+ankigpt-book-no-structure = No usable chapter or section structure was found.
+ankigpt-book-nothing-selected = Include at least one chapter or section.
+ankigpt-book-extracting-unit = Generating { $name } ({ $current } of { $total })...
+ankigpt-book-active-unit = { $name } ({ $current } of { $total })
+ankigpt-book-retrying-unit = No concepts returned for { $name }; retrying with focused book-unit guidance...
+ankigpt-units-without-concepts = { $count } selected units returned no concepts and will be omitted:
+    { $names }
+ankigpt-created-book-decks = Created { $count } decks containing { $concepts } concepts.
+ankigpt-created-document-decks = Created { $count } document decks containing { $concepts } concepts.
+ankigpt-document-extracting-unit = Generating from { $name } ({ $current } of { $total })...
+ankigpt-untitled-document = Untitled document
 
 ## Preferences
 ankigpt-preferences-group = Connect Your AI

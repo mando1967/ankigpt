@@ -5,7 +5,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aqt.ankigpt.study_sources import CourseBrief, discover_sources, total_size
+from aqt.ankigpt.study_sources import (
+    CourseBrief,
+    discover_sources,
+    document_deck_names,
+    total_size,
+)
+
+
+def test_document_deck_names_are_nested_and_collision_safe() -> None:
+    assert document_deck_names(
+        "Engineering::Lectures", ["intro.pdf", "intro.docx", "forces::week.md"]
+    ) == [
+        "Engineering::Lectures::intro",
+        "Engineering::Lectures::intro (2)",
+        "Engineering::Lectures::forces - week",
+    ]
 
 
 def test_course_brief_produces_explicit_prompt_constraints() -> None:

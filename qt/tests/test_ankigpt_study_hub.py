@@ -26,13 +26,37 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
 
     assert "Good to see you" in page
     assert "Statics &lt;Moments&gt;" in page
-    assert "pycmd('ankigpt:route:course:10')" in page
+    assert "ankigptDeckGo" in page
+    assert 'value="open" checked' in page
+    assert 'value="study"' in page
+    assert 'value="edit"' in page
+    assert 'id="deck-go"' in page
     assert "pycmd('open:" not in page
     assert "4 due" in page
     assert "Up to date" in page
     assert "12 cards studied today" in page
     assert "Advanced Anki Tools" not in page
     assert "Exit" in page and "ankigpt:exit" in page
+
+
+def test_hub_renders_nested_decks_as_collapsed_selectable_accordion() -> None:
+    category = node("Vehicles", 10, review=4)
+    subcategory = node("Cars", 11, review=3)
+    deck = node("Engine Fundamentals", 12, review=2)
+    category.children.append(subcategory)
+    subcategory.children.append(deck)
+    root = SimpleNamespace(children=[category])
+
+    page = render_study_hub(root, "Today")
+
+    assert 'data-deck-id="10" aria-expanded="false"' in page
+    assert 'data-deck-id="11" data-parent-id="10" aria-expanded="false" hidden' in page
+    assert 'data-deck-id="12" data-parent-id="11" hidden' in page
+    assert page.count("ankigptSelectDeck(this)") == 3
+    assert page.count("deck-disclosure") >= 2
+    assert "ankigpt:study:${ankigptSelectedDeck}" in page
+    assert "ankigpt:route:course:${ankigptSelectedDeck}" in page
+    assert "ankigpt:route:concepts:${ankigptSelectedDeck}" in page
 
 
 def test_shell_routes_stay_in_the_new_interface() -> None:
