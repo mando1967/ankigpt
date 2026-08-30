@@ -13,7 +13,16 @@ from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 
 ## What it does
 
-- Creates concept decks from PDF, DOCX, Markdown, and plain-text material.
+- Creates concept decks from PDF, DOCX, Markdown, plain-text, folder, and web
+  sources.
+- Organizes decks as **category → subcategory → deck** and presents the
+  hierarchy as a selectable accordion in Open, Study, and Edit modes.
+- In book mode, places the book automatically under the selected course or
+  subject as its subcategory, detects its structure, and lets the user review
+  and adjust it before choosing one deck per chapter or one deck per section.
+- For non-book sources, requires a subcategory and lets the user combine
+  multiple documents into one deck or create a separate deck for each
+  document.
 - Filters and organizes source material before proposing concepts.
 - Lets the student review, edit, improve, or delete generated concepts.
 - Generates source-aware self-graded, typed-answer, and multiple-choice study
