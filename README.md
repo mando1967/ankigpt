@@ -31,26 +31,30 @@ microeconomics course.
 
 ![Current AnkiGPT Study Hub](docs/ankigpt/screenshots/01-deck-list.png)
 
-| Create a course from source material | Review concepts before creating the deck |
+| Browse the concept library | Refine a concept in the Study Hub |
 | --- | --- |
-| ![Create a concept deck from a document](docs/ankigpt/screenshots/02-create-deck.png) | ![Review AI-proposed concepts](docs/ankigpt/screenshots/04-preview.png) |
+| ![Browse concepts in the current Study Hub](docs/ankigpt/screenshots/14-concepts.png) | ![Edit a concept and its visual aid](docs/ankigpt/screenshots/12-concept-editor.png) |
 
-| Refine a concept in the Study Hub | Review licensing, credits, and privacy information |
+| Configure course generation | Review detected book structure |
 | --- | --- |
-| ![Edit a concept and its visual aid](docs/ankigpt/screenshots/12-concept-editor.png) | ![About AnkiGPT application information](docs/ankigpt/screenshots/13-about.png) |
+| ![Configure an AI concept course](docs/ankigpt/screenshots/02-create-deck.png) | ![Review detected chapters and sections](docs/ankigpt/screenshots/17-book-structure.png) |
+
+| Monitor extraction progress | Review concepts before creating decks |
+| --- | --- |
+| ![Monitor concept extraction](docs/ankigpt/screenshots/03-extracting.png) | ![Review AI-proposed concepts and destinations](docs/ankigpt/screenshots/04-preview.png) |
+
+| Open a course and choose the next action | Configure AI securely in Settings |
+| --- | --- |
+| ![Current course page](docs/ankigpt/screenshots/15-course.png) | ![Current AnkiGPT settings](docs/ankigpt/screenshots/16-settings.png) |
 
 | Study with an AI-generated question | Receive feedback and a suggested rating |
 | --- | --- |
 | ![Answer a generated study question](docs/ankigpt/screenshots/06-review-typed.png) | ![Review an AI-graded answer](docs/ankigpt/screenshots/07-review-graded.png) |
 
-Questions remain connected to the uploaded material. The source viewer opens
-the relevant document and highlights the passages retrieved for the current
-concept.
+Licensing, upstream credits, privacy guidance, version information, and
+support links are available without leaving the application.
 
-![Source document with supporting passages highlighted](docs/ankigpt/screenshots/11-source-viewer.png)
-
-Additional screenshots are available in
-[`docs/ankigpt/screenshots`](docs/ankigpt/screenshots).
+![About AnkiGPT application information](docs/ankigpt/screenshots/13-about.png)
 
 ## Install on Windows
 

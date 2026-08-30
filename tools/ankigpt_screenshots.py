@@ -9,8 +9,8 @@ Usage (from the repo root, after `just build`):
         docs/ankigpt/screenshots [base-dir]
 
 With ANKIGPT_FAKE_LLM=1 it runs without network (placeholder content) —
-useful to check layouts. Screens include the Study Hub, concept editor, About
-page, create-course flow, reviewer, source viewer, and course settings.
+useful to check layouts. Screens cover the current Study Hub routes and the
+AI-assisted typed-answer reviewer shown in the repository documentation.
 """
 
 from __future__ import annotations
@@ -30,12 +30,14 @@ sys.path.extend(["pylib", "qt", "out/pylib", "out/qt"])
 
 import aqt  # noqa: E402
 from aqt.profiles import ProfileManager  # noqa: E402
-from aqt.qt import QWidget  # noqa: E402
+from aqt.qt import QFont, QFontDatabase, QWidget  # noqa: E402
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/ankigpt/screenshots")
 BASE = sys.argv[2] if len(sys.argv) > 2 else "/tmp/ankigpt-screenshots-base"
 SAMPLE = Path("docs/ankigpt/sample-course.md").resolve()
-DECK = "Intro Microeconomics"
+COURSE = "Intro Microeconomics"
+SUBCATEGORY = "Core Notes"
+DECK = f"{COURSE}::{SUBCATEGORY}"
 INSTRUCTIONS = (
     "First-year intro microeconomics, weeks 1-3. Focus on the core models and "
     "the intuition behind them, not on the numerical examples."
@@ -64,6 +66,13 @@ def run() -> None:
     aqt.AnkiApp.KEY = f"ankigpt-screenshots-{os.getpid()}"
     app = aqt._run(["anki", "-b", BASE], exec=False)
     assert app is not None
+    for font_path in (
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ):
+        if Path(font_path).exists() and QFontDatabase.addApplicationFont(font_path) >= 0:
+            app.setFont(QFont("Segoe UI", 10))
+            break
 
     def pump(cond: Callable[[], bool], what: str, timeout: float = 180) -> None:
         start = time.time()
@@ -94,76 +103,98 @@ def run() -> None:
     settle()
     col = mw.col
 
-    from aqt.ankigpt import get_store
     from aqt.ankigpt.generate_dialog import CreateConceptDeckDialog
     from aqt.ankigpt.settings import (
         DeckSettings,
-        DeckSettingsDialog,
-        deck_settings,
         save_deck_settings,
     )
 
     # ---- 1. create-deck dialog, filled in
     dialog = CreateConceptDeckDialog(mw)
     dialog.resize(760, 620)
-    dialog.files.append(str(SAMPLE))
-    dialog.file_list.addItem(str(SAMPLE))
-    dialog._suggest_target()
-    dialog.deck_name.setCurrentText(DECK)
+    dialog._add_source_paths([str(SAMPLE)])
+    dialog.deck_name.setCurrentText(COURSE)
+    dialog.subcategory.setText(SUBCATEGORY)
     dialog.instructions.setPlainText(INSTRUCTIONS)
     dialog.target.setValue(12)
     dialog.mode.setCurrentIndex(1)  # typed
     shot(dialog, "02-create-deck")
 
-    # ---- 2. extraction with the progress page, then the preview table
+    # ---- 2. representative book structure review
+    from aqt.ankigpt import extract
+    from aqt.ankigpt.book_structure import detect_book_structure
+
+    book_dialog = CreateConceptDeckDialog(mw)
+    book_dialog.resize(900, 650)
+    book_dialog.book_source.setChecked(True)
+    book_dialog.deck_name.setCurrentText("Physical Geology")
+    book_dialog.subcategory.setText("Physical Geology, 2nd Edition")
+    book_text = "\n\n".join(
+        [
+            "# Chapter 1 Foundations",
+            "## 1.1 What Is Geology?\n" + "Earth systems and inquiry. " * 180,
+            "## 1.2 Why Study Earth?\n" + "Hazards and resources. " * 150,
+            "# Chapter 2 Minerals",
+            "## 2.1 Elements and Atoms\n" + "Atomic structure and bonding. " * 170,
+            "## 2.2 Mineral Properties\n" + "Physical properties. " * 190,
+        ]
+    )
+    book_dialog._book_doc = extract.Document("physical-geology.md", book_text)
+    book_dialog._book_chapters = detect_book_structure(book_text)
+    book_dialog._fill_structure_tree()
+    book_dialog.stack.setCurrentIndex(1)
+    shot(book_dialog, "17-book-structure")
+    book_dialog.close()
+
+    # ---- 3. extraction with progress, then concept review
     dialog.on_extract()
     # capture the progress page once a few log lines are in (or immediately
     # if extraction is instantaneous, e.g. with the fake client)
     pump(
-        lambda: dialog.stack.currentIndex() != 2
+        lambda: dialog.stack.currentIndex() != 3
         or dialog.progress_log.blockCount() >= 4,
         "progress page",
         120,
     )
-    if dialog.stack.currentIndex() == 2:
+    if dialog.stack.currentIndex() == 3:
         shot(dialog, "03-extracting", 0)
-    pump(lambda: dialog.stack.currentIndex() == 1, "extraction to finish", 600)
+    else:
+        dialog.stack.setCurrentIndex(3)
+        shot(dialog, "03-extracting", 0)
+        dialog.stack.setCurrentIndex(2)
+    pump(lambda: dialog.stack.currentIndex() == 2, "extraction to finish", 600)
     dialog.table.resizeRowsToContents()
     shot(dialog, "04-preview")
     dialog.on_create()
     pump(lambda: not dialog.isVisible(), "notes to be created", 60)
 
-    # ---- 3. current Study Hub and its primary informational routes
+    # ---- 3. current Study Hub and its primary routes
     mw.moveToState("deckBrowser")
-    mw.deckBrowser.refresh()
-    settle(3.0)
-    mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
-    shot(mw.deckBrowser.web, "01-deck-list", 1.0)
-
     import aqt.ankigpt as ankigpt_module
 
-    concepts = ankigpt_module._concept_records(mw)
-    if concepts:
-        ankigpt_module._shell_route = f"concept:{concepts[0][0]}"
+    def shell_shot(route: str, name: str) -> None:
+        ankigpt_module._shell_route = route
         mw.deckBrowser.refresh()
         settle(3.0)
         mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
-        shot(mw.deckBrowser.web, "12-concept-editor", 1.0)
-    ankigpt_module._shell_route = "about"
-    mw.deckBrowser.refresh()
-    settle(3.0)
-    mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
-    shot(mw.deckBrowser.web, "13-about", 1.0)
-    ankigpt_module._shell_route = "home"
+        shot(mw.deckBrowser.web, name, 1.0)
 
-    # ---- 4. overview of the concept deck (badge + Concept Settings)
     deck_id = col.decks.id_for_name(DECK)
     assert deck_id is not None
-    col.decks.select(deck_id)
-    mw.moveToState("overview")
-    shot(mw, "05-overview")
+    shell_shot("home", "01-deck-list")
+    shell_shot("concepts", "14-concepts")
+    concepts = ankigpt_module._concept_records(mw)
+    if concepts:
+        shell_shot(f"concept:{concepts[0][0]}", "12-concept-editor")
+    shell_shot(f"course:{int(deck_id)}", "15-course")
+    shell_shot("settings", "16-settings")
+    shell_shot("about", "13-about")
+    ankigpt_module._shell_route = "home"
 
-    # ---- 5. typed-mode question, then graded answer
+    # ---- 4. select the generated course before entering the reviewer
+    col.decks.select(deck_id)
+
+    # ---- 5. current typed-mode question, then graded answer
     save_deck_settings(col, deck_id, DeckSettings(mode="typed", context=INSTRUCTIONS))
     reviewer = mw.reviewer
     mw.moveToState("review")
@@ -180,49 +211,6 @@ def run() -> None:
     settle(1.0)
     reviewer.web.eval("window.scrollTo(0, 0);")
     shot(mw, "07-review-graded", 0.5)
-
-    # ---- 5b. the source viewer, opened from the answer's "Open in source" link
-    from aqt.ankigpt.sources import SourceViewerDialog
-
-    cur = reviewer.ankigpt._current
-    docs = get_store().documents_for_deck(int(deck_id))
-    if cur is not None and cur.passages and docs:
-        viewer = SourceViewerDialog(
-            mw, docs, cur.passages[0].doc_id, [(p.start, p.end) for p in cur.passages]
-        )
-        viewer.show()
-        shot(viewer, "11-source-viewer", 1.0)
-        viewer.close()
-
-    # ---- 6. multiple choice on the next card (fresh generation)
-    first_id = reviewer.card.id
-    save_deck_settings(col, deck_id, DeckSettings(mode="mcq", context=INSTRUCTIONS))
-    store = get_store()
-    store.db.execute("DELETE FROM question_cache")
-    store.db.commit()
-    reviewer._answerCard(3)
-    pump(
-        lambda: reviewer.state == "question" and reviewer.card.id != first_id,
-        "next card",
-    )
-    settle(1.0)
-    shot(mw, "08-review-mcq")
-
-    # ---- 7. deck settings dialog
-    mw.moveToState("overview")
-    settings_dialog = DeckSettingsDialog(mw, deck_id)
-    settings_dialog.show()
-    shot(settings_dialog, "09-deck-settings", 0.8)
-    settings_dialog.close()
-    assert deck_settings(col, deck_id).mode == "mcq"
-
-    # ---- 8. the in-app guide
-    from aqt.ankigpt.help import GuideDialog
-
-    guide = GuideDialog(mw)
-    guide.show()
-    shot(guide, "10-guide", 0.8)
-    guide.close()
 
     mw.unloadProfileAndExit()
     pump(lambda: aqt.mw is None or aqt.mw.col is None, "profile unload", 30)
