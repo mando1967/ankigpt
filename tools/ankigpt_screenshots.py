@@ -177,7 +177,7 @@ def run() -> None:
         mw.deckBrowser.refresh()
         settle(3.0)
         mw.deckBrowser.web.eval("window.scrollTo(0, 0);")
-        shot(mw.deckBrowser.web, name, 1.0)
+        shot(mw, name, 1.0)
 
     deck_id = col.decks.id_for_name(DECK)
     assert deck_id is not None
