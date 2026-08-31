@@ -6,6 +6,10 @@ cd /d "%~dp0"
 set "UPLOAD=0"
 set "UPLOAD_ARGUMENT=%~1"
 set "GITHUB_REPOSITORY=%~2"
+if /i "!UPLOAD_ARGUMENT!"=="upload" (
+    set "UPLOAD_ARGUMENT=upload=%~2"
+    set "GITHUB_REPOSITORY=%~3"
+)
 if not defined GITHUB_REPOSITORY set "GITHUB_REPOSITORY=mando1967/ankigpt"
 
 if defined UPLOAD_ARGUMENT (
