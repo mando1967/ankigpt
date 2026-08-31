@@ -626,14 +626,17 @@ class ConceptReviewController:
             )
         else:
             actions = _rating_buttons(None)
+        top_actions = actions if kind == "reviewAnswer" else ""
+        bottom_actions = actions if kind == "reviewQuestion" else ""
         return (
             f"<style>{_UNIVERSAL_REVIEW_CSS}</style>"
             f'<main class="ankigpt-study-card ankigpt-standard-card">'
-            f'{header}<section class="ankigpt-standard-content">{text}</section>'
-            f"{actions}</main>"
+            f'{header}{top_actions}<section class="ankigpt-standard-content">{text}</section>'
+            f"{bottom_actions}</main>"
         )
 
     def _on_show_answer(self, card: Card) -> None:
+        self.mw.bottomWeb.hide()
         cur = self._current
         if cur is None or cur.card_id != card.id or not cur.graded or not cur.grade:
             return
@@ -1003,20 +1006,34 @@ def _visual_html(filename: str, alt: str) -> str:
 
 
 def _rating_buttons(suggested: int | None) -> str:
+    next_star = "★ " if suggested == 1 else ""
+    next_button = (
+        '<button type="button" class="ease-1 ankigpt-next-question" '
+        "onclick=\"pycmd('ankigpt:rate:1')\">"
+        f"{next_star}{html.escape(tr.ankigpt_next_question())}</button>"
+    )
     buttons = []
-    for ease in (1, 2, 3, 4):
+    for ease in (2, 3, 4):
         star = "★ " if ease == suggested else ""
         buttons.append(
             f'<button type="button" class="ease-{ease}" '
             f"onclick=\"pycmd('ankigpt:rate:{ease}')\">"
             f"{star}{html.escape(_ease_label(ease))}</button>"
         )
-    return f'<div class="ankigpt-rating"><div>How well did you know this?</div>{"".join(buttons)}</div>'
+    return (
+        f'<div class="ankigpt-rating">{next_button}'
+        f'<div class="ankigpt-rating-question">{html.escape(tr.ankigpt_question_rating())}</div>'
+        f"{''.join(buttons)}</div>"
+    )
 
 
 def render_answer_html(cur: ActiveQuestion) -> str:
     q = cur.question
-    parts = [_header(cur.mode, cur.mastery, cur.title), _question_block(q)]
+    parts = [
+        _header(cur.mode, cur.mastery, cur.title),
+        _rating_buttons(cur.grade.ease if cur.grade else None),
+        _question_block(q),
+    ]
     if cur.mode in CHOICE_MODES:
         parts.append(_option_list(q, cur.choice, reveal=cur.graded))
     parts.append("<hr id=answer>")
@@ -1055,7 +1072,6 @@ def render_answer_html(cur: ActiveQuestion) -> str:
         )
     parts.append(_points_block(tr.ankigpt_key_points(), q.key_points))
     parts.append(render_source_html(cur))
-    parts.append(_rating_buttons(cur.grade.ease if cur.grade else None))
     return f'<main class="ankigpt-study-card answer">{"".join(parts)}</main>'
 
 

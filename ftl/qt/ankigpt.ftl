@@ -180,6 +180,8 @@ ankigpt-incorrect = Incorrect
 ankigpt-score = Score: { $score }/100
 ankigpt-type-answer-hint = Type your answer, then press Enter (Shift+Enter for a new line).
 ankigpt-check-answer = Check Answer
+ankigpt-next-question = Next Question
+ankigpt-question-rating = How was this question?
 
 ## Limits
 ankigpt-max-chars = Max characters read per document
