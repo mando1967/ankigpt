@@ -4,14 +4,16 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "UPLOAD=0"
+set "UPLOAD_ARGUMENT=%~1"
 set "GITHUB_REPOSITORY=%~2"
 if not defined GITHUB_REPOSITORY set "GITHUB_REPOSITORY=mando1967/ankigpt"
 
-if not "%~1"=="" (
-    if /i "%~1"=="upload=0" set "UPLOAD=0"
-    if /i "%~1"=="upload=1" set "UPLOAD=1"
-    if /i not "%~1"=="upload=0" if /i not "%~1"=="upload=1" (
+if defined UPLOAD_ARGUMENT (
+    if /i "!UPLOAD_ARGUMENT!"=="upload=0" set "UPLOAD=0"
+    if /i "!UPLOAD_ARGUMENT!"=="upload=1" set "UPLOAD=1"
+    if /i not "!UPLOAD_ARGUMENT!"=="upload=0" if /i not "!UPLOAD_ARGUMENT!"=="upload=1" (
         echo Error: First argument must be upload=0 or upload=1.
+        echo Received: [!UPLOAD_ARGUMENT!]
         exit /b 2
     )
 )
