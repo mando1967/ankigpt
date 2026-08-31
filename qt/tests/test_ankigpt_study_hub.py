@@ -43,6 +43,14 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert "Advanced Anki Tools" not in page
     assert "Exit" in page and "ankigpt:exit" in page
 
+    study_page = render_study_hub(root, "Today", "study")
+    assert 'value="study" checked' in study_page
+    assert 'id="study-mode-picker" class="study-mode-picker"' in study_page
+    assert study_page.count('name="study-mode"') == 4
+    for mode in ("typed", "mcq", "true_false", "fill_blank"):
+        assert f'name="study-mode" value="{mode}" checked' in study_page
+    assert study_page.count(" checked>") >= 5
+
 
 def test_hub_renders_nested_decks_as_collapsed_selectable_accordion() -> None:
     category = node("Vehicles", 10, review=4)
@@ -59,6 +67,7 @@ def test_hub_renders_nested_decks_as_collapsed_selectable_accordion() -> None:
     assert 'data-deck-id="12" data-parent-id="11" hidden' in page
     assert page.count("ankigptSelectDeck(this)") == 3
     assert page.count("deck-disclosure") >= 2
+    assert "background:#dceaff" in page
     assert "ankigpt:study:${ankigptSelectedDeck}" in page
     assert "ankigpt:route:course:${ankigptSelectedDeck}" in page
     assert "ankigpt:route:concepts:${ankigptSelectedDeck}" in page

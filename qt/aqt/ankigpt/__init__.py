@@ -189,6 +189,7 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
             route = message.removeprefix("ankigpt:route:")
             if route in {
                 "home",
+                "study",
                 "concepts",
                 "library",
                 "add",

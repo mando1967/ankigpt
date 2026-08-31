@@ -192,7 +192,7 @@ class DeckSettings:
         if self.mode == MODE_MIX:
             return list(STUDY_MODES)
         if self.mode == MODE_SELF:
-            return [MODE_TYPED]
+            return list(STUDY_MODES)
         return [self.mode] if self.mode in STUDY_MODES else [MODE_TYPED]
 
 

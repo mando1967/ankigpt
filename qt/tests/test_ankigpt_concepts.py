@@ -89,6 +89,12 @@ def test_deck_settings_roundtrip_and_inheritance(col: Collection) -> None:
     parent = deck_id_for_name(col, "Course")
     child = deck_id_for_name(col, "Course::Week 1")
     assert deck_settings(col, child) == DeckSettings()
+    assert deck_settings(col, child).enabled_modes() == [
+        "typed",
+        "mcq",
+        "true_false",
+        "fill_blank",
+    ]
     assert not has_deck_settings(col, child)
 
     save_deck_settings(col, parent, DeckSettings(mode="mcq", context="ctx"))
