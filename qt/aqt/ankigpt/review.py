@@ -40,7 +40,7 @@ from aqt.ankigpt.prompts import (
     Mode,
     QuestionRequest,
 )
-from aqt.ankigpt.settings import MODE_MIX, DeckSettings, deck_settings, llm_config
+from aqt.ankigpt.settings import DeckSettings, deck_settings, llm_config
 from aqt.ankigpt.store import Store
 from aqt.operations import QueryOp
 from aqt.qt import QTimer
@@ -60,6 +60,8 @@ GENERATE_ATTEMPTS = 2
 JS_CHOOSE_PREFIX = "ankigpt:choose:"
 JS_SOURCE_PREFIX = "ankigpt:source:"
 DEEP_LOOKUP_LEVELS = ("solid", "mastered", "expert")
+CHOICE_MODES = ("mcq", "true_false")
+TYPED_MODES = ("typed", "fill_blank")
 
 
 @dataclass
@@ -198,7 +200,7 @@ class ConceptReviewController:
         if cur.grading:
             return True
 
-        if cur.mode == "mcq":
+        if cur.mode in CHOICE_MODES:
             self._grade_choice(cur)
             return False
 
@@ -280,9 +282,7 @@ class ConceptReviewController:
 
     def _pick_mode(self, card: Card) -> tuple[Mode, DeckSettings]:
         settings = deck_settings(self.mw.col, card.current_deck_id())
-        mode = settings.mode
-        if mode == MODE_MIX:
-            mode = random.choice(prompts.MODES)
+        mode = random.choice(settings.enabled_modes())
         if mode not in prompts.MODES:
             mode = "self"
         return cast(Mode, mode), settings
@@ -503,7 +503,7 @@ class ConceptReviewController:
     def _choose(self, index: int) -> None:
         cur = self._current
         r = self.reviewer
-        if cur is None or cur.mode != "mcq" or cur.choice is not None:
+        if cur is None or cur.mode not in CHOICE_MODES or cur.choice is not None:
             return
         if r.state != "question" or r.card is None or r.card.id != cur.card_id:
             return
@@ -792,7 +792,7 @@ class ConceptReviewController:
         if (
             r.state == "question"
             and cur is not None
-            and cur.mode == "mcq"
+            and cur.mode in CHOICE_MODES
             and cur.choice is None
             and r.card is not None
             and r.card.id == cur.card_id
@@ -879,6 +879,8 @@ def _mode_name(mode: Mode) -> str:
         "self": tr.ankigpt_mode_self(),
         "typed": tr.ankigpt_mode_typed(),
         "mcq": tr.ankigpt_mode_mcq(),
+        "true_false": tr.ankigpt_mode_true_false(),
+        "fill_blank": tr.ankigpt_mode_fill_blank(),
     }.get(mode, mode)
 
 
@@ -953,18 +955,20 @@ def render_question_html(
     parts = [_header(mode, mastery), _question_block(question)]
     if visual_placement in {"question", "both"}:
         parts.append(_visual_html(visual, visual_alt))
-    if mode == "typed":
+    if mode in TYPED_MODES:
         parts.append(
             '<textarea id="typeans" rows="4" onkeydown="'
             "if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();pycmd('ans');}"
             '"></textarea>'
             f'<div class="ankigpt-banner">{html.escape(tr.ankigpt_type_answer_hint())}</div>'
         )
-    elif mode == "mcq":
+    elif mode in CHOICE_MODES:
         parts.append(_option_list(question, None, reveal=False))
-    if mode != "mcq":
+    if mode not in CHOICE_MODES:
         label = (
-            tr.ankigpt_check_answer() if mode == "typed" else tr.studying_show_answer()
+            tr.ankigpt_check_answer()
+            if mode in TYPED_MODES
+            else tr.studying_show_answer()
         )
         parts.append(
             '<div class="ankigpt-study-actions"><button type="button" '
@@ -1013,13 +1017,13 @@ def _rating_buttons(suggested: int | None) -> str:
 def render_answer_html(cur: ActiveQuestion) -> str:
     q = cur.question
     parts = [_header(cur.mode, cur.mastery, cur.title), _question_block(q)]
-    if cur.mode == "mcq":
+    if cur.mode in CHOICE_MODES:
         parts.append(_option_list(q, cur.choice, reveal=cur.graded))
     parts.append("<hr id=answer>")
     if cur.visual_placement in {"answer", "both"}:
         parts.append(_visual_html(cur.visual, cur.visual_alt))
 
-    if cur.mode == "typed" and cur.user_answer:
+    if cur.mode in TYPED_MODES and cur.user_answer:
         parts.append(
             f'<div class="ankigpt-user-answer"><b>{html.escape(tr.ankigpt_your_answer())}</b>'
             f"<br>{html.escape(cur.user_answer)}</div>"
@@ -1028,7 +1032,7 @@ def render_answer_html(cur: ActiveQuestion) -> str:
     if cur.graded and cur.grade is not None:
         g = cur.grade
         bits = []
-        if cur.mode == "mcq":
+        if cur.mode in CHOICE_MODES:
             verdict = tr.ankigpt_correct() if g.score >= 100 else tr.ankigpt_incorrect()
             bits.append(f'<span class="ankigpt-score">{html.escape(verdict)}</span>')
         else:

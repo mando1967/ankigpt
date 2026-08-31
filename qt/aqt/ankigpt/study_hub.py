@@ -227,18 +227,22 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
             if deck_id is None or (len(concept) > 7 and concept[7] == deck_id)
         ]
         deck = next(
-            (item for item in decks if deck_id is not None and int(item.deck_id) == deck_id),
+            (
+                item
+                for item in decks
+                if deck_id is not None and int(item.deck_id) == deck_id
+            ),
             None,
         )
         heading = f"{html.escape(deck.name)} concepts" if deck else "Your concepts"
         back = (
-            f"<button class=\"text-back\" onclick=\"pycmd('ankigpt:route:course:{deck_id}')\">← Course</button>"
+            f'<button class="text-back" onclick="pycmd(\'ankigpt:route:course:{deck_id}\')">← Course</button>'
             if deck
             else ""
         )
         cards = (
             "".join(
-                f"""<button class="course-tile" data-search="{html.escape(f'{title} {summary}', quote=True).casefold()}" onclick="pycmd('ankigpt:route:concept:{nid}')">
+                f"""<button class="course-tile" data-search="{html.escape(f"{title} {summary}", quote=True).casefold()}" onclick="pycmd('ankigpt:route:concept:{nid}')">
             <span class="course-icon">◇</span><span><strong>{html.escape(title)}</strong>
             <small>{html.escape(summary[:110])}</small></span><b>›</b></button>"""
                 for nid, title, summary, _points, *_rest in visible_concepts
@@ -353,12 +357,23 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         <label><input type="radio" name="deck-action" value="edit"> Edit</label>
         <button id="deck-go" class="hub-primary" type="button" disabled onclick="ankigptDeckGo()">GO</button>
       </div>
+      <div id="study-mode-picker" class="study-mode-picker" hidden>
+        <strong>Study modes</strong>
+        <label><input type="checkbox" name="study-mode" value="typed" checked> Questions</label>
+        <label><input type="checkbox" name="study-mode" value="mcq"> Multiple-choice</label>
+        <label><input type="checkbox" name="study-mode" value="true_false"> True or False</label>
+        <label><input type="checkbox" name="study-mode" value="fill_blank"> Fill in the blank</label>
+        <span id="study-mode-error" hidden>Select at least one study mode.</span>
+      </div>
       <div class="deck-card"><table class="hub-table deck-tree">
         <thead><tr><th>Deck</th><th>New</th><th>Learning</th><th>Review</th><th>Status</th></tr></thead>
         <tbody>{rows}</tbody>
       </table></div>
       <script>
       let ankigptSelectedDeck = null;
+      document.querySelectorAll('input[name="deck-action"]').forEach(input => input.addEventListener('change', () => {{
+        document.getElementById('study-mode-picker').hidden = input.value !== 'study' || !input.checked;
+      }}));
       function ankigptSelectDeck(row) {{
         document.querySelectorAll('.deck-tree tr.selected').forEach(item => item.classList.remove('selected'));
         row.classList.add('selected');
@@ -389,8 +404,14 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
       function ankigptDeckGo() {{
         if (!ankigptSelectedDeck) return;
         const action = document.querySelector('input[name="deck-action"]:checked').value;
+        const modes = Array.from(document.querySelectorAll('input[name="study-mode"]:checked')).map(input => input.value);
+        if (action === 'study' && !modes.length) {{
+          document.getElementById('study-mode-error').hidden = false;
+          return;
+        }}
+        document.getElementById('study-mode-error').hidden = true;
         const command = action === 'study'
-          ? `ankigpt:study:${{ankigptSelectedDeck}}`
+          ? `ankigpt:study:${{ankigptSelectedDeck}}:${{modes.join(',')}}`
           : action === 'edit'
             ? `ankigpt:route:concepts:${{ankigptSelectedDeck}}`
             : `ankigpt:route:course:${{ankigptSelectedDeck}}`;
@@ -451,6 +472,7 @@ center > table { width:100%; max-width:none; }
 .hub-danger { padding:11px 18px; color:#b42318; background:#fff; border:1px solid #f1b5b0; border-radius:8px; font-weight:700; cursor:pointer; }.hub-danger:hover { color:#fff; background:#b42318; border-color:#b42318; }
 .hub-section { margin-top:28px; }.section-heading { display:flex; align-items:end; justify-content:space-between; margin-bottom:11px; }.section-heading h2 { margin:4px 0 0; font-size:22px; color:#15234a; }.today { color:#718096; font-size:12px; }
 .deck-picker-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; }.deck-picker-actions label { padding:8px 11px; color:#34435f; background:#f7f9fc; border:1px solid #dce3ec; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }.deck-picker-actions input { margin:0 5px 0 0; vertical-align:-1px; }.deck-picker-actions .hub-primary { margin-left:5px; padding:9px 22px; }.hub-primary:disabled { cursor:not-allowed; opacity:.45; }
+.study-mode-picker { display:flex; justify-content:flex-end; align-items:center; gap:9px; margin:-2px 0 12px; padding:10px 12px; background:#f7f9fc; border:1px solid #dce3ec; border-radius:9px; font-size:12px; }.study-mode-picker[hidden] { display:none; }.study-mode-picker label { white-space:nowrap; }.study-mode-picker input { vertical-align:-1px; }.study-mode-picker span { color:#b42318; font-weight:700; }
 .deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table tbody tr.selected { background:#e8f0ff; box-shadow:inset 3px 0 #2367e8; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }.deck-name { display:flex; align-items:center; gap:7px; padding-left:calc(var(--deck-depth) * 21px); }.deck-name small { margin-left:auto; color:#8a94a6; font-size:10px; font-weight:650; text-transform:uppercase; }.deck-disclosure { display:grid; place-items:center; width:22px; height:22px; padding:0; color:#3157d5; background:transparent; border:0; border-radius:5px; cursor:pointer; }.deck-disclosure:hover { background:#dce7ff; }.deck-disclosure-spacer { width:22px; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
 .page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { display:flex; align-items:center; gap:8px; padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.search-shell input { flex:1; min-width:0; padding:0; color:#263653; background:transparent; border:0; outline:0; font:inherit; }.search-shell span { white-space:nowrap; font-size:12px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile[hidden],.empty-card[hidden] { display:none; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }

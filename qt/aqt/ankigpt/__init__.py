@@ -318,12 +318,31 @@ def _install_study_hub(mw: AnkiQt) -> None:
 
 def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     """Select the course and enter the scheduler without showing legacy Overview."""
+    from aqt.ankigpt.settings import STUDY_MODES, deck_settings, save_deck_settings
     from aqt.operations.deck import set_current_deck
 
     try:
-        deck_id = DeckId(int(message.rsplit(":", 1)[1]))
+        payload = message.removeprefix("ankigpt:study:")
+        raw_id, separator, raw_modes = payload.partition(":")
+        deck_id = DeckId(int(raw_id))
+        current = deck_settings(mw.col, deck_id)
+        modes = (
+            [mode for mode in raw_modes.split(",") if mode in STUDY_MODES]
+            if separator
+            else current.enabled_modes()
+        )
     except ValueError:
         return
+    if not modes:
+        return
+    settings = current
+    settings.mode = modes[0]
+    settings.modes = modes
+    save_deck_settings(mw.col, deck_id, settings)
+    try:
+        get_store().drop_all_cached()
+    except Exception:
+        pass
 
     def start(_changes: object) -> None:
         mw.col.startTimebox()

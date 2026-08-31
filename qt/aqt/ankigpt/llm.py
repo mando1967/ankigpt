@@ -334,6 +334,14 @@ class FakeLLMClient:
             out["explanation"] = (
                 "Option 1 restates the concept; the others contradict it."
             )
+        elif mode == "true_false":
+            out["question"] = f"The core description of {title} is accurate."
+            out["options"] = ["True", "False"]
+            out["correct_index"] = 0
+            out["explanation"] = "The statement matches the supplied concept."
+        elif mode == "fill_blank":
+            out["question"] = f"Complete the statement: _____ is central to {title}."
+            out["model_answer"] = "The core idea"
         return out
 
     @staticmethod

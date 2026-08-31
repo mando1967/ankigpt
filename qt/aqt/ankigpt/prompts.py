@@ -18,8 +18,8 @@ from anki import scheduler_pb2
 from anki.cards import Card
 from aqt.ankigpt.retrieve import Passage, preview
 
-Mode = Literal["self", "typed", "mcq"]
-MODES: tuple[Mode, ...] = ("self", "typed", "mcq")
+Mode = Literal["self", "typed", "mcq", "true_false", "fill_blank"]
+MODES: tuple[Mode, ...] = ("self", "typed", "mcq", "true_false", "fill_blank")
 
 # Markers that let FakeLLMClient (and humans reading logs) find structured
 # parts of a prompt.
@@ -428,6 +428,8 @@ _MODE_INSTRUCTIONS: dict[Mode, str] = {
     "self": 'Set "options" to an empty list and "correct_index" to -1. Leave "explanation" empty.',
     "typed": 'The learner will type a free-text answer. Set "options" to an empty list and "correct_index" to -1. Leave "explanation" empty.',
     "mcq": 'Produce a multiple-choice question: "options" must contain exactly 4 answer choices (plain text, no letter prefixes), exactly one correct. "correct_index" is the 0-based index of the correct option. Distractors must be plausible and reflect real misconceptions; make them harder as mastery increases. "explanation" briefly explains why the correct option is right and the others are wrong.',
+    "true_false": 'Write one unambiguous factual statement as the question. Set "options" to exactly ["True", "False"] and "correct_index" to 0 or 1. The statement and answer must be supported directly by the supplied material. "explanation" briefly explains why it is true or false.',
+    "fill_blank": 'Write one sentence with exactly one important term or short phrase replaced by _____. The missing answer must be unambiguous from the supplied material. Put the missing text in "model_answer", use it as the main key point, set "options" to an empty list and "correct_index" to -1, and leave "explanation" empty.',
 }
 
 
@@ -515,11 +517,17 @@ def parse_question(data: dict[str, Any], mode: Mode) -> GeneratedQuestion:
         raise PromptError("empty question")
     options = [str(o).strip() for o in data.get("options", [])]
     correct = int(data.get("correct_index", -1))
-    if mode == "mcq":
-        if len(options) != 4 or any(not o for o in options):
-            raise PromptError("multiple choice needs exactly 4 options")
-        if not 0 <= correct < 4:
+    if mode in {"mcq", "true_false"}:
+        expected = 4 if mode == "mcq" else 2
+        if len(options) != expected or any(not o for o in options):
+            raise PromptError(f"choice question needs exactly {expected} options")
+        if not 0 <= correct < expected:
             raise PromptError("correct_index out of range")
+        if mode == "true_false" and [o.casefold() for o in options] != [
+            "true",
+            "false",
+        ]:
+            raise PromptError('true/false options must be ["True", "False"]')
     else:
         options = []
         correct = -1
@@ -785,10 +793,12 @@ def build_inquiry_prompt(
     context: str = "",
     sources: list[str] | None = None,
 ) -> tuple[str, str]:
-    rendered_sources = "\n\n".join(
-        f'[{i}] """{source}"""'
-        for i, source in enumerate(sources or [], start=1)
-    ) or "(none)"
+    rendered_sources = (
+        "\n\n".join(
+            f'[{i}] """{source}"""' for i, source in enumerate(sources or [], start=1)
+        )
+        or "(none)"
+    )
     user = f"""MODE: {mode.upper()}
 LEARNER REQUEST: {question}
 
@@ -853,15 +863,23 @@ Rules:
 
 
 def build_visual_prompt(
-    *, title: str, summary: str, key_points: list[str], context: str = "", request: str = ""
+    *,
+    title: str,
+    summary: str,
+    key_points: list[str],
+    context: str = "",
+    request: str = "",
 ) -> tuple[str, str]:
-    return _VISUAL_SYSTEM, f"""CONCEPT: {title}
+    return (
+        _VISUAL_SYSTEM,
+        f"""CONCEPT: {title}
 SUMMARY: {summary}
 KEY POINTS:
 {_bullets(key_points)}
 COURSE CONTEXT: {context or "(none)"}
 LEARNER'S VISUAL REQUEST: {request or "Choose the most instructionally useful visual."}
-"""
+""",
+    )
 
 
 def parse_visual(data: dict[str, Any]) -> GeneratedVisual:

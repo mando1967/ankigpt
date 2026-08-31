@@ -31,6 +31,11 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert 'value="study"' in page
     assert 'value="edit"' in page
     assert 'id="deck-go"' in page
+    assert 'value="typed" checked' in page
+    assert 'value="mcq"' in page
+    assert 'value="true_false"' in page
+    assert 'value="fill_blank"' in page
+    assert "Select at least one study mode" in page
     assert "pycmd('open:" not in page
     assert "4 due" in page
     assert "Up to date" in page

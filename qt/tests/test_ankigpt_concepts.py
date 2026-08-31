@@ -101,6 +101,14 @@ def test_deck_settings_roundtrip_and_inheritance(col: Collection) -> None:
     assert deck_settings(col, parent).mode == "mcq"
     assert set(col.get_config(CONFIG_KEY).keys()) == {str(parent), str(child)}
 
+    mixed = DeckSettings(mode="typed", modes=["typed", "true_false", "fill_blank"])
+    save_deck_settings(col, child, mixed)
+    assert deck_settings(col, child).enabled_modes() == [
+        "typed",
+        "true_false",
+        "fill_blank",
+    ]
+
     # unknown modes fall back safely
     data = col.get_config(CONFIG_KEY)
     data[str(child)]["mode"] = "bogus"

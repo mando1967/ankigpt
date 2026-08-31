@@ -7,7 +7,7 @@ the widgets that edit them."""
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from anki.collection import Collection
@@ -142,8 +142,11 @@ CONFIG_KEY = "ankigptDecks"
 MODE_SELF = "self"
 MODE_TYPED = "typed"
 MODE_MCQ = "mcq"
+MODE_TRUE_FALSE = "true_false"
+MODE_FILL_BLANK = "fill_blank"
 MODE_MIX = "mix"
-DECK_MODES = (MODE_SELF, MODE_TYPED, MODE_MCQ, MODE_MIX)
+STUDY_MODES = (MODE_TYPED, MODE_MCQ, MODE_TRUE_FALSE, MODE_FILL_BLANK)
+DECK_MODES = (MODE_SELF, *STUDY_MODES, MODE_MIX)
 
 
 def mode_label(mode: str) -> str:
@@ -151,6 +154,8 @@ def mode_label(mode: str) -> str:
         MODE_SELF: tr.ankigpt_mode_self(),
         MODE_TYPED: tr.ankigpt_mode_typed(),
         MODE_MCQ: tr.ankigpt_mode_mcq(),
+        MODE_TRUE_FALSE: tr.ankigpt_mode_true_false(),
+        MODE_FILL_BLANK: tr.ankigpt_mode_fill_blank(),
         MODE_MIX: tr.ankigpt_mode_mix(),
     }[mode]
 
@@ -158,6 +163,7 @@ def mode_label(mode: str) -> str:
 @dataclass
 class DeckSettings:
     mode: str = MODE_SELF
+    modes: list[str] = field(default_factory=list)
     auto_submit: bool = False
     auto_submit_delay_ms: int = 2500
     context: str = ""
@@ -168,13 +174,26 @@ class DeckSettings:
         mode = d.get("mode", MODE_SELF)
         if mode not in DECK_MODES:
             mode = MODE_SELF
+        stored_modes = d.get("modes", [])
+        if not isinstance(stored_modes, list):
+            stored_modes = []
         return DeckSettings(
             mode=mode,
+            modes=[m for m in stored_modes if m in STUDY_MODES],
             auto_submit=bool(d.get("auto_submit", False)),
             auto_submit_delay_ms=int(d.get("auto_submit_delay_ms", 2500)),
             context=str(d.get("context", "")),
             deep_lookup=bool(d.get("deep_lookup", True)),
         )
+
+    def enabled_modes(self) -> list[str]:
+        if self.modes:
+            return list(self.modes)
+        if self.mode == MODE_MIX:
+            return list(STUDY_MODES)
+        if self.mode == MODE_SELF:
+            return [MODE_TYPED]
+        return [self.mode] if self.mode in STUDY_MODES else [MODE_TYPED]
 
 
 def _all_deck_settings(col: Collection) -> dict[str, Any]:
@@ -220,11 +239,17 @@ class DeckSettingsDialog(QDialog):
         self.settings = deck_settings(mw.col, deck_id)
 
         form = QFormLayout()
-        self.mode = QComboBox()
-        for mode in DECK_MODES:
-            self.mode.addItem(mode_label(mode), mode)
-        self.mode.setCurrentIndex(DECK_MODES.index(self.settings.mode))
-        form.addRow(tr.ankigpt_grading_mode(), self.mode)
+        mode_box = QWidget()
+        mode_layout = QVBoxLayout(mode_box)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        enabled = set(self.settings.enabled_modes())
+        self.mode_checks: dict[str, QCheckBox] = {}
+        for mode in STUDY_MODES:
+            check = QCheckBox(mode_label(mode))
+            check.setChecked(mode in enabled)
+            self.mode_checks[mode] = check
+            mode_layout.addWidget(check)
+        form.addRow(tr.ankigpt_study_modes(), mode_box)
 
         self.auto_submit = QCheckBox(tr.ankigpt_auto_submit())
         self.auto_submit.setChecked(self.settings.auto_submit)
@@ -260,8 +285,15 @@ class DeckSettingsDialog(QDialog):
         restoreGeom(self, "ankigptDeckSettings")
 
     def accept(self) -> None:
+        modes = [mode for mode, check in self.mode_checks.items() if check.isChecked()]
+        if not modes:
+            from aqt.utils import showWarning
+
+            showWarning(tr.ankigpt_choose_study_mode(), self)
+            return
         self.settings = DeckSettings(
-            mode=str(self.mode.currentData()),
+            mode=modes[0],
+            modes=modes,
             auto_submit=self.auto_submit.isChecked(),
             auto_submit_delay_ms=int(self.delay.value() * 1000),
             context=self.context.toPlainText().strip(),

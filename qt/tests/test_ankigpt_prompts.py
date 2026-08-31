@@ -139,6 +139,30 @@ def test_parse_question_validates_mcq() -> None:
     assert prompts.GeneratedQuestion.from_json(q.to_json()) == q
 
 
+def test_true_false_and_fill_blank_modes() -> None:
+    true_false = {
+        "question": "Opportunity cost applies to every choice.",
+        "model_answer": "True",
+        "key_points": ["Every choice has an opportunity cost"],
+        "options": ["True", "False"],
+        "correct_index": 0,
+        "explanation": "The material states that it applies to every choice.",
+    }
+    assert parse_question(true_false, "true_false").options == ["True", "False"]
+    with pytest.raises(PromptError):
+        parse_question({**true_false, "options": ["Yes", "No"]}, "true_false")
+
+    system, user = prompts.build_question_prompt(sample_request("fill_blank"))
+    assert "exactly one important term" in user
+    result = parse_question(
+        FakeLLMClient().complete_json(
+            system, user, "generate_question", prompts.QUESTION_SCHEMA
+        ),
+        "fill_blank",
+    )
+    assert "_____" in result.question and not result.options
+
+
 def test_parse_grade_clamps_and_derives_ease() -> None:
     g = parse_grade({"score": 140, "ease": 9, "feedback": "x", "missed_points": []})
     assert g.score == 100 and g.ease == 4
