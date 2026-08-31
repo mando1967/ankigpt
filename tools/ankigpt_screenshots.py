@@ -181,7 +181,14 @@ def run() -> None:
 
     deck_id = col.decks.id_for_name(DECK)
     assert deck_id is not None
-    shell_shot("home", "01-deck-list")
+    ankigpt_module._shell_route = "study"
+    mw.deckBrowser.refresh()
+    settle(3.0)
+    mw.deckBrowser.web.eval(
+        "ankigptSelectDeck(document.querySelector('.deck-tree tbody tr'))"
+    )
+    settle(1.0)
+    shot(mw, "01-deck-list", 1.0)
     shell_shot("concepts", "14-concepts")
     concepts = ankigpt_module._concept_records(mw)
     if concepts:

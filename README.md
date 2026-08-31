@@ -17,6 +17,11 @@ from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
   sources.
 - Organizes decks as **category → subcategory → deck** and presents the
   hierarchy as a selectable accordion in Open, Study, and Edit modes.
+- Makes the current accordion selection explicit and requires the learner to
+  confirm it with **GO** before opening, studying, or editing that item.
+- Supports mixed study sessions using any combination of typed questions,
+  multiple-choice, true-or-false, and fill-in-the-blank questions; all four
+  are enabled by default.
 - In book mode, places the book automatically under the selected course or
   subject as its subcategory, detects its structure, and lets the user review
   and adjust it before choosing one deck per chapter or one deck per section.
