@@ -8,12 +8,11 @@ set "GITHUB_REPOSITORY=%~2"
 if not defined GITHUB_REPOSITORY set "GITHUB_REPOSITORY=mando1967/ankigpt"
 
 if not "%~1"=="" (
-    for /f "tokens=1,2 delims==" %%A in ("%~1") do (
-        if /i not "%%A"=="upload" (
-            echo Error: First argument must be upload=0 or upload=1.
-            exit /b 2
-        )
-        set "UPLOAD=%%B"
+    if /i "%~1"=="upload=0" set "UPLOAD=0"
+    if /i "%~1"=="upload=1" set "UPLOAD=1"
+    if /i not "%~1"=="upload=0" if /i not "%~1"=="upload=1" (
+        echo Error: First argument must be upload=0 or upload=1.
+        exit /b 2
     )
 )
 
