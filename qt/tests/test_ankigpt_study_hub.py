@@ -31,6 +31,9 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert 'value="study"' in page
     assert 'value="edit"' in page
     assert 'id="deck-go"' in page
+    assert 'title="Select a deck to continue."' in page
+    assert "No deck selected" in page
+    assert "✓ Selected" in page
     assert 'value="typed" checked' in page
     assert 'value="mcq"' in page
     assert 'value="true_false"' in page
@@ -62,12 +65,17 @@ def test_hub_renders_nested_decks_as_collapsed_selectable_accordion() -> None:
 
     page = render_study_hub(root, "Today")
 
-    assert 'data-deck-id="10" aria-expanded="false"' in page
-    assert 'data-deck-id="11" data-parent-id="10" aria-expanded="false" hidden' in page
-    assert 'data-deck-id="12" data-parent-id="11" hidden' in page
+    assert 'data-deck-id="10" aria-selected="false" aria-expanded="false"' in page
+    assert (
+        'data-deck-id="11" aria-selected="false" data-parent-id="10" '
+        'aria-expanded="false" hidden' in page
+    )
+    assert 'data-deck-id="12" aria-selected="false" data-parent-id="11" hidden' in page
     assert page.count("ankigptSelectDeck(this)") == 3
     assert page.count("deck-disclosure") >= 2
-    assert "background:#dceaff" in page
+    assert "background:#cfe1ff" in page
+    assert "deck-selected-badge" in page
+    assert "Selected: ${deckName}" in page
     assert "ankigpt:study:${ankigptSelectedDeck}" in page
     assert "ankigpt:route:course:${ankigptSelectedDeck}" in page
     assert "ankigpt:route:concepts:${ankigptSelectedDeck}" in page
