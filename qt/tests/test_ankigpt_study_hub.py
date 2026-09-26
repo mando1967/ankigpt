@@ -39,6 +39,10 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert 'value="true_false"' in page
     assert 'value="fill_blank"' in page
     assert "Select at least one study mode" in page
+    assert 'id="focus-enabled"' in page
+    assert 'id="focus-goal"' in page
+    assert 'id="focus-minutes"' in page
+    assert ":focus:${document.getElementById('focus-goal').value}" in page
     assert "pycmd('open:" not in page
     assert "4 due" in page
     assert "Up to date" in page
@@ -49,7 +53,7 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     study_page = render_study_hub(root, "Today", "study")
     assert 'value="study" checked' in study_page
     assert 'id="study-mode-picker" class="study-mode-picker"' in study_page
-    assert study_page.count('name="study-mode"') == 4
+    assert study_page.count('<input type="checkbox" name="study-mode"') == 4
     for mode in ("typed", "mcq", "true_false", "fill_blank"):
         assert f'name="study-mode" value="{mode}" checked' in study_page
     assert study_page.count(" checked>") >= 5
@@ -73,6 +77,11 @@ def test_hub_renders_nested_decks_as_collapsed_selectable_accordion() -> None:
     assert 'data-deck-id="12" aria-selected="false" data-parent-id="11" hidden' in page
     assert page.count("ankigptSelectDeck(this)") == 3
     assert page.count("deck-disclosure") >= 2
+    assert ".deck-tree tbody tr[hidden] { display:none !important; }" in page
+    assert (
+        ".deck-tree tbody tr.selected>td,.deck-tree tbody "
+        "tr.selected:hover>td { background:#cfe1ff !important; }" in page
+    )
     assert "background:#cfe1ff" in page
     assert "deck-selected-badge" in page
     assert "Selected: ${deckName}" in page
@@ -194,3 +203,118 @@ def test_course_concepts_are_scoped_and_searchable() -> None:
     editor = render_study_hub(root, "Today", "concept:100", records)
     assert "ankigpt:route:concepts:10" in editor
     assert "deck_id:10" in editor
+
+
+def test_focus_completion_summary() -> None:
+    root = SimpleNamespace(children=[node("Statics", 10)])
+    page = render_study_hub(
+        root,
+        "Today",
+        "focus-summary",
+        focus_summary={"answered": 5, "goal": 5, "minutes": 8},
+    )
+
+    assert "FOCUS SESSION COMPLETE" in page
+    assert "Cards completed" in page
+    assert "Focused minutes" in page
+    assert "Start another session" in page
+
+
+def test_concept_card_editor_displays_html_fields_as_plain_text() -> None:
+    root = SimpleNamespace(children=[node("Statics", 10)])
+    notes = [
+        {
+            "id": 200,
+            "deck": "Statics",
+            "notetype": "AnkiGPT Concept",
+            "preview": "Moment of inertia",
+            "fields": [
+                ("Summary", "Area &lt;em&gt;moment&lt;/em&gt;"),
+                ("KeyPoints", "<ul><li>First point</li><li>Second point</li></ul>"),
+            ],
+        }
+    ]
+
+    page = render_study_hub(root, "Today", "note:200", notes=notes)
+
+    assert "&lt;ul&gt;" not in page
+    assert "First point\nSecond point" in page
+    assert "Area &lt;em&gt;moment&lt;/em&gt;" in page
+
+
+def test_libraries_group_entries_by_deck() -> None:
+    from html.parser import HTMLParser
+
+    class Groups(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.groups = []
+            self.current = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "details":
+                self.current = []
+                self.groups.append((attrs, self.current))
+            if tag == "button" and "data-search" in attrs:
+                self.current.append(attrs["data-search"])
+
+    root = SimpleNamespace(
+        children=[node("Zoology", 10), node("Biology::Cells & DNA", 11)]
+    )
+    concepts = [
+        (1, "Animals", "Description", [], "", "", "answer", 10),
+        (2, "Genes", "Description", [], "", "", "answer", 11),
+        (3, "Nucleus", "Description", [], "", "", "answer", 11),
+    ]
+    notes = [
+        {
+            "id": record[0],
+            "preview": record[1],
+            "deck": "Zoology" if record[7] == 10 else "Biology::Cells & DNA",
+            "notetype": "Basic",
+        }
+        for record in concepts
+    ]
+    for route in ("concepts", "library"):
+        page = render_study_hub(root, "", route, concepts=concepts, notes=notes)
+        parser = Groups()
+        parser.feed(page)
+        assert [len(cards) for _, cards in parser.groups] == [2, 1]
+        assert all("open" not in attrs for attrs, _ in parser.groups)
+        assert "genes" in parser.groups[0][1][0]
+        assert "animals" in parser.groups[1][1][0]
+        assert "Biology::Cells &amp; DNA" in page
+
+    page = render_study_hub(root, "", "concepts:11", concepts=concepts)
+    parser = Groups()
+    parser.feed(page)
+    assert len(parser.groups) == 1
+    assert "open" in parser.groups[0][0]
+
+
+def test_concept_editor_preserves_list_origin(monkeypatch) -> None:
+    import aqt.ankigpt as shell
+
+    monkeypatch.setattr(shell, "_shell_route", "concepts")
+    monkeypatch.setattr(shell, "_concept_return_route", "concepts")
+    root = SimpleNamespace(children=[node("Statics", 10)])
+    records = [(100, "Moment", "Turning effect", [], "", "", "answer", 10)]
+    for origin in ("concepts", "concepts:10"):
+        shell._set_shell_route(origin)
+        shell._set_shell_route("concept:100")
+        # Refreshing the editor must not overwrite its list origin.
+        shell._set_shell_route("concept:100")
+        assert shell._concept_return_route == origin
+        page = render_study_hub(
+            root,
+            "",
+            "concept:100",
+            records,
+            settings={"concept_return_route": shell._concept_return_route},
+        )
+        # Sidebar, Back, and Cancel all return to the same list.
+        assert page.count(f"pycmd('ankigpt:route:{origin}')") == 3
+        if origin == "concepts":
+            assert "pycmd('ankigpt:route:concepts:10')" not in page
+            assert "All concepts" in page

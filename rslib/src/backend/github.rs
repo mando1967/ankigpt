@@ -22,8 +22,11 @@ use crate::updates::updates_dir;
 use crate::updates::user_agent;
 use crate::updates::DownloadUpdateProgress;
 
-const ALL_RELEASES_URL: &str = "https://api.github.com/repos/ankitects/anki/releases";
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/ankitects/anki/releases/latest";
+// This fork must only offer installers built and published by AnkiGPT. Pointing
+// at the upstream Anki feed can replace the customized application with stock
+// Anki and remove the integrated AnkiGPT interface.
+const ALL_RELEASES_URL: &str = "https://api.github.com/repos/superj6/ankigpt/releases";
+const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/superj6/ankigpt/releases/latest";
 
 // NOTE: must match platform suffixes in build_installer.py
 fn get_platform_suffix() -> Option<&'static str> {

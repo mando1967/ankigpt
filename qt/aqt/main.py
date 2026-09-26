@@ -26,11 +26,9 @@ import aqt.sound
 from anki import hooks
 from anki._backend import RustBackend as _RustBackend
 from anki._legacy import deprecated
-from anki.buildinfo import version as version_str
 from anki.collection import (
     Collection,
     Config,
-    GithubRelease,
     OpChanges,
     UndoStatus,
 )
@@ -1378,21 +1376,9 @@ title="{}" {}>{}</button>""".format(
         show_shell_route(self, "settings")
 
     def on_check_for_updates(self) -> None:
-        from packaging.version import Version
+        from aqt.update import check_for_ankigpt_update
 
-        from aqt.update import get_latest_release_op, prompt_and_install_github_update
-
-        version = Version(version_str)
-
-        def on_success(release: GithubRelease) -> None:
-            if Version(release.tag_name) > version:
-                prompt_and_install_github_update(self, release)
-            else:
-                tooltip(tr.addons_no_updates_available(), parent=self)
-
-        get_latest_release_op(
-            parent=self, include_prerelease=version.is_prerelease, on_success=on_success
-        ).with_progress().run_in_background()
+        check_for_ankigpt_update(self, manual=True)
 
     def onNoteTypes(self) -> None:
         import aqt.models
@@ -1509,6 +1495,7 @@ title="{}" {}>{}</button>""".format(
         qconnect(m.actionEmptyCards.triggered, self.onEmptyCards)
         qconnect(m.actionNoteTypes.triggered, self.onNoteTypes)
         qconnect(m.action_check_for_updates.triggered, self.on_check_for_updates)
+        m.action_check_for_updates.setText("Check for AnkiGPT Updates...")
         qconnect(m.actionPreferences.triggered, self.onPrefs)
 
         # View
@@ -1571,10 +1558,10 @@ title="{}" {}>{}</button>""".format(
     ##########################################################################
 
     def setup_auto_update(self, _log: list[DownloadLogEntry]) -> None:
-        from aqt.update import check_for_update
+        from aqt.update import check_for_ankigpt_update
 
         if aqt.mw.pm.check_for_updates():
-            check_for_update()
+            check_for_ankigpt_update(self, manual=False)
 
     # Timers
     ##########################################################################

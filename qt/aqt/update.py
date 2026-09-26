@@ -5,8 +5,11 @@ from __future__ import annotations
 
 from typing import Callable
 
+from packaging.version import Version
+
 import aqt
 from anki.buildinfo import buildhash
+from anki.buildinfo import version as version_str
 from anki.collection import CheckForUpdateResponse, Collection, GithubRelease
 from anki.utils import dev_mode, int_time, int_version, plat_desc
 from aqt.operations import QueryOp
@@ -14,7 +17,7 @@ from aqt.package import (
     download_github_update_and_install as _download_github_update_and_install,
 )
 from aqt.qt import *
-from aqt.utils import openLink, show_warning, showText, tr
+from aqt.utils import openLink, show_warning, showText, tooltip, tr
 
 
 def check_for_update() -> None:
@@ -88,10 +91,8 @@ def prompt_to_update(mw: aqt.AnkiQt, ver: str) -> None:
 
 
 def prompt_and_install_github_update(mw: aqt.AnkiQt, release: GithubRelease) -> None:
-    msg = (
-        tr.qt_misc_anki_updatedanki_has_been_released(val=release.tag_name)
-        + tr.qt_misc_would_you_like_to_download_it()
-    )
+    msg = f"AnkiGPT {release.tag_name.removeprefix('v')} has been released.\n\n"
+    msg += "Would you like to download and install it now?"
 
     msgbox = QMessageBox(mw)
     msgbox.setStandardButtons(
@@ -99,12 +100,41 @@ def prompt_and_install_github_update(mw: aqt.AnkiQt, release: GithubRelease) -> 
     )
     msgbox.setIcon(QMessageBox.Icon.Information)
     msgbox.setText(msg)
+    msgbox.setWindowTitle("AnkiGPT Update")
 
+    ignore_button = QPushButton("Ignore this update")
+    msgbox.addButton(ignore_button, QMessageBox.ButtonRole.RejectRole)
     msgbox.setDefaultButton(QMessageBox.StandardButton.Yes)
     ret = msgbox.exec()
 
-    if ret == QMessageBox.StandardButton.Yes:
+    if msgbox.clickedButton() == ignore_button:
+        mw.pm.meta["suppressAnkiGPTUpdate"] = release.tag_name
+    elif ret == QMessageBox.StandardButton.Yes:
         _download_github_update_and_install(release)
+
+
+def check_for_ankigpt_update(mw: aqt.AnkiQt, *, manual: bool) -> None:
+    """Check AnkiGPT's release feed, never the upstream Anki update service."""
+    installed = Version(version_str.removeprefix("v"))
+
+    def on_success(release: GithubRelease) -> None:
+        available = Version(release.tag_name.removeprefix("v"))
+        suppressed = mw.pm.meta.get("suppressAnkiGPTUpdate")
+        if available > installed and (manual or suppressed != release.tag_name):
+            prompt_and_install_github_update(mw, release)
+        elif manual:
+            tooltip("No AnkiGPT updates are available.", parent=mw)
+
+    op = get_latest_release_op(
+        parent=mw,
+        include_prerelease=installed.is_prerelease,
+        on_success=on_success,
+    )
+    if manual:
+        op.with_progress().run_in_background()
+    else:
+        op.failure(lambda exc: print(f"AnkiGPT update check failed: {exc}"))
+        op.run_in_background()
 
 
 def get_latest_release_op(

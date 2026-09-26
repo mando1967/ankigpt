@@ -34,12 +34,23 @@ _store: Store | None = None
 _menu: QMenu | None = None
 _shell_route = "home"
 _shell_notice = ""
+_concept_return_route = "concepts"
+
+
+def _set_shell_route(route: str) -> None:
+    global _shell_route, _concept_return_route
+    if route.startswith("concept:") and not _shell_route.startswith("concept:"):
+        _concept_return_route = (
+            _shell_route
+            if _shell_route == "concepts" or _shell_route.startswith("concepts:")
+            else "concepts"
+        )
+    _shell_route = route
 
 
 def show_shell_route(mw: AnkiQt, route: str) -> None:
     """Open a destination in the unified shell from native shortcuts/actions."""
-    global _shell_route
-    _shell_route = route
+    _set_shell_route(route)
     if mw.state == "deckBrowser":
         mw.deckBrowser.refresh()
     else:
@@ -67,6 +78,8 @@ def _close_store() -> None:
 
 def install(mw: AnkiQt) -> None:
     """Add menu entries and hooks. Called once from AnkiQt setup."""
+    from aqt.ankigpt.audio import close_audio, show_audio
+    from aqt.ankigpt.browser import close_browser, show_browser
     from aqt.ankigpt.generate_dialog import CreateConceptDeckDialog, open_deck_settings
 
     global _menu
@@ -77,6 +90,14 @@ def install(mw: AnkiQt) -> None:
     settings_action = QAction(tr.ankigpt_menu_deck_settings(), mw)
     qconnect(settings_action.triggered, lambda: open_deck_settings(mw))
     menu.addAction(settings_action)
+    audio_action = QAction("Background sounds…", mw)
+    qconnect(audio_action.triggered, lambda: show_audio(mw))
+    menu.addAction(audio_action)
+    gui_hooks.profile_will_close.append(close_audio)
+    browser_action = QAction("Web browser…", mw)
+    qconnect(browser_action.triggered, lambda: show_browser(mw))
+    menu.addAction(browser_action)
+    gui_hooks.profile_will_close.append(close_browser)
     mw.form.menuTools.insertMenu(mw.form.actionPreferences, menu)
 
     def on_deck_options_menu(deck_menu: QMenu, deck_id: int) -> None:
@@ -185,7 +206,6 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
             create_concept_deck(mw)
             return (True, None)
         if message.startswith("ankigpt:route:") and isinstance(context, DeckBrowser):
-            global _shell_route
             route = message.removeprefix("ankigpt:route:")
             if route in {
                 "home",
@@ -198,8 +218,18 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
                 "system",
                 "about",
             } or route.startswith(("concept:", "concepts:", "course:", "note:")):
-                _shell_route = route
+                _set_shell_route(route)
                 context.refresh()
+            return (True, None)
+        if message == "ankigpt:browser" and isinstance(context, DeckBrowser):
+            from aqt.ankigpt.browser import show_browser
+
+            show_browser(mw)
+            return (True, None)
+        if message == "ankigpt:audio" and isinstance(context, DeckBrowser):
+            from aqt.ankigpt.audio import show_audio
+
+            show_audio(mw)
             return (True, None)
         if message.startswith("ankigpt:study:") and isinstance(context, DeckBrowser):
             _start_study_from_shell(mw, context, message)
@@ -309,8 +339,9 @@ def _install_study_hub(mw: AnkiQt) -> None:
             _shell_route,
             _concept_records(mw),
             _note_records(mw),
-            _shell_settings(mw),
+            {**_shell_settings(mw), "concept_return_route": _concept_return_route},
             _shell_notice,
+            _focus_summary(),
         )
         content.stats = ""
 
@@ -324,7 +355,10 @@ def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
 
     try:
         payload = message.removeprefix("ankigpt:study:")
-        raw_id, separator, raw_modes = payload.partition(":")
+        parts = payload.split(":")
+        raw_id = parts[0]
+        raw_modes = parts[1] if len(parts) > 1 else ""
+        separator = len(parts) > 1
         deck_id = DeckId(int(raw_id))
         current = deck_settings(mw.col, deck_id)
         modes = (
@@ -332,6 +366,9 @@ def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
             if separator
             else current.enabled_modes()
         )
+        focus_enabled = len(parts) >= 5 and parts[2] == "focus"
+        focus_goal = int(parts[3]) if focus_enabled else 0
+        focus_minutes = int(parts[4]) if focus_enabled else 0
     except ValueError:
         return
     if not modes:
@@ -340,6 +377,12 @@ def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     settings.mode = modes[0]
     settings.modes = modes
     save_deck_settings(mw.col, deck_id, settings)
+    from aqt.ankigpt import focus
+
+    if focus_enabled:
+        focus.start(focus_goal, focus_minutes)
+    else:
+        focus.stop()
     try:
         get_store().drop_all_cached()
     except Exception:
@@ -348,10 +391,20 @@ def _start_study_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     def start(_changes: object) -> None:
         mw.col.startTimebox()
         mw.moveToState("review")
+        if focus_enabled and focus.current() is not None:
+            from aqt.ankigpt.audio import focus_started
+
+            focus_started(mw)
 
     set_current_deck(parent=mw, deck_id=deck_id).success(start).run_in_background(
         initiator=browser
     )
+
+
+def _focus_summary() -> dict[str, int] | None:
+    from aqt.ankigpt.focus import last_summary
+
+    return last_summary()
 
 
 def _delete_course_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
@@ -532,7 +585,6 @@ def _save_note_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     try:
         payload = json.loads(unquote(message.split(":", 2)[2]))
         note_id = NoteId(int(payload["nid"]))
-        deck_id = int(payload.get("deck_id", 0))
         fields = payload["fields"]
         if not isinstance(fields, dict):
             return
@@ -541,9 +593,40 @@ def _save_note_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
 
     def save(col: Collection):
         note = col.get_note(note_id)
+        from aqt.ankigpt.concepts import (
+            FIELD_CONTEXT,
+            FIELD_KEY_POINTS,
+            FIELD_SOURCES,
+            FIELD_SUMMARY,
+            FIELD_TITLE,
+            FIELD_VISUAL,
+            FIELD_VISUAL_ALT,
+            NOTETYPE_NAME,
+            points_to_field,
+            sources_to_field,
+        )
+
+        is_concept = str(note.note_type()["name"]) == NOTETYPE_NAME
         for name in note.keys():
             if name in fields:
-                note[name] = str(fields[name])
+                value = str(fields[name])
+                if is_concept and name == FIELD_KEY_POINTS:
+                    value = points_to_field(
+                        [line.strip() for line in value.splitlines() if line.strip()]
+                    )
+                elif is_concept and name == FIELD_SOURCES:
+                    value = sources_to_field(
+                        [line.strip() for line in value.splitlines() if line.strip()]
+                    )
+                elif is_concept and name in {
+                    FIELD_TITLE,
+                    FIELD_SUMMARY,
+                    FIELD_CONTEXT,
+                    FIELD_VISUAL,
+                    FIELD_VISUAL_ALT,
+                }:
+                    value = html.escape(value)
+                note[name] = value
         return col.update_note(note)
 
     def done(_changes: object) -> None:
@@ -625,9 +708,11 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
         note[FIELD_VISUAL_PLACEMENT] = placement
         return col.update_note(note)
 
+    return_route = _concept_return_route
+
     def done(_changes: object) -> None:
         global _shell_route
-        _shell_route = f"concepts:{deck_id}" if deck_id else "concepts"
+        _shell_route = return_route
         browser.refresh()  # type: ignore[attr-defined]
 
     CollectionOp(parent=mw, op=save).success(done).run_in_background()

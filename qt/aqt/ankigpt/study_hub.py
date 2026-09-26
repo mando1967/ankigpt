@@ -26,6 +26,7 @@ def render_study_hub(
     notes: list[dict[str, Any]] | None = None,
     settings: dict[str, Any] | None = None,
     notice: str = "",
+    focus_summary: dict[str, int] | None = None,
 ) -> str:
     decks = _all_decks(root.children)
     first_due = next(
@@ -57,6 +58,7 @@ def render_study_hub(
         notes or [],
         settings or {},
         notice,
+        focus_summary,
     )
     concepts_destination = "concepts"
     if route.startswith(("course:", "concepts:")):
@@ -69,6 +71,9 @@ def render_study_hub(
         concept = next((item for item in (concepts or []) if item[0] == note_id), None)
         if concept and len(concept) > 7:
             concepts_destination = f"concepts:{int(concept[7])}"
+        concepts_destination = str(
+            (settings or {}).get("concept_return_route", concepts_destination)
+        )
     return f"""
 <tr><td colspan="9" class="ankigpt-hub-cell">
 <style>{_CSS}</style>
@@ -81,6 +86,7 @@ def render_study_hub(
     <button class="nav-item {_active(route, "concepts")}" onclick="pycmd('ankigpt:route:{concepts_destination}')">▣ <span>Concepts</span></button>
     <button class="nav-item {_active(route, "library")}" onclick="pycmd('ankigpt:route:library')">▤ <span>Card Library</span></button>
     <button class="nav-item {_active(route, "progress")}" onclick="pycmd('ankigpt:route:progress')">⌁ <span>Progress</span></button>
+    <button class="nav-item" onclick="pycmd('ankigpt:browser')">↗ <span>Web browser</span></button>
     <div class="nav-spacer"></div>
     <button class="nav-item {_active(route, "system")}" onclick="pycmd('ankigpt:route:system')">↻ <span>Data & Sync</span></button>
     <button class="nav-item {_active(route, "settings")}" onclick="pycmd('ankigpt:route:settings')">⚙ <span>Settings</span></button>
@@ -93,8 +99,70 @@ def render_study_hub(
 """
 
 
+def _deck_sections(entries: list[tuple[str, str]], layout: str) -> str:
+    groups: dict[str, list[str]] = {}
+    for name, card in entries:
+        groups.setdefault(name, []).append(card)
+    return "".join(
+        f'<details class="deck-group"{" open" if len(groups) == 1 else ""}>'
+        f'<summary>{html.escape(name)} <span class="deck-group-count">({len(cards)})</span></summary>'
+        f'<div class="{layout}">{"".join(cards)}</div></details>'
+        for name, cards in sorted(groups.items(), key=lambda item: item[0].casefold())
+    )
+
+
+_DECK_FILTER_SCRIPT = """
+<script>
+function ankigptFilterDecks(value, containerId, statusId, emptyId) {
+    const query = value.trim().toLocaleLowerCase();
+    const container = document.getElementById(containerId);
+    const cards = [...container.querySelectorAll('[data-search]')];
+    let shown = 0;
+    container.querySelectorAll('.deck-group').forEach(group => {
+        if (query && !group.dataset.searching) {
+            group.dataset.wasOpen = group.open ? '1' : '0';
+            group.dataset.searching = '1';
+        }
+        let matches = 0;
+        group.querySelectorAll('[data-search]').forEach(card => {
+            card.hidden = !!query && !card.dataset.search.includes(query);
+            if (!card.hidden) matches++;
+        });
+        group.hidden = matches === 0;
+        group.querySelector('.deck-group-count').textContent = '(' + matches + ')';
+        if (query) group.open = matches > 0;
+        else if (group.dataset.searching) {
+            group.open = group.dataset.wasOpen === '1';
+            delete group.dataset.searching;
+        }
+        shown += matches;
+    });
+    document.getElementById(statusId).textContent = 'Showing ' + shown + ' of ' + cards.length;
+    document.getElementById(emptyId).hidden = shown !== 0;
+}
+function ankigptFilterConcepts(value) {
+    ankigptFilterDecks(value, 'concept-grid', 'concept-search-status', 'concept-search-empty');
+}
+</script>
+"""
+
+
 def _active(route: str, expected: str) -> str:
     return "active" if route == expected or route.startswith(f"{expected}:") else ""
+
+
+def _editable_note_fields(note: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return editor-friendly text for fields that Anki stores as HTML."""
+    if note.get("notetype") != "AnkiGPT Concept":
+        return note["fields"]
+
+    from aqt.ankigpt.concepts import field_to_text
+
+    fields: list[tuple[str, str]] = []
+    for name, value in note["fields"]:
+        # Lists and blockquotes become one editable item per line.
+        fields.append((name, field_to_text(value)))
+    return fields
 
 
 def _route_content(  # noqa: PLR0911 - each shell destination has distinct markup
@@ -107,6 +175,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
     notes: list[dict[str, Any]],
     settings: dict[str, Any],
     notice: str,
+    focus_summary: dict[str, int] | None,
 ) -> str:
     if route == "add":
         deck_options = "".join(
@@ -129,7 +198,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         if note:
             fields = "".join(
                 f'<label>{html.escape(name)}<textarea class="note-field" data-name="{html.escape(name, quote=True)}" rows="5">{html.escape(value)}</textarea></label>'
-                for name, value in note["fields"]
+                for name, value in _editable_note_fields(note)
             )
             return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:library')">← Card library</button>
             <div class="page-head"><div class="hub-eyebrow">CARD EDITOR</div><h1>Edit note</h1><p>{html.escape(note["deck"])} · {html.escape(note["notetype"])}</p></div>
@@ -137,16 +206,19 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
             <button class="hub-primary" onclick="ankigptSaveNote()">Save changes</button></div></section>
             <script>function ankigptSaveNote(){{const f={{}};document.querySelectorAll('.note-field').forEach(e=>f[e.dataset.name]=e.value);pycmd('ankigpt:save-note:'+encodeURIComponent(JSON.stringify({{nid:{note_id},fields:f}})));}}</script></main>"""
     if route == "library":
-        note_rows = (
-            "".join(
-                f"""<button class="library-row" onclick="pycmd('ankigpt:route:note:{item["id"]}')"><span><strong>{html.escape(item["preview"])}</strong><small>{html.escape(item["deck"])} · {html.escape(item["notetype"])}</small></span><b>›</b></button>"""
+        note_rows = _deck_sections(
+            [
+                (
+                    item["deck"],
+                    f"""<button class="library-row" data-search="{html.escape(f"{item['deck']} {item['preview']} {item['notetype']}".lower(), quote=True)}" onclick="pycmd('ankigpt:route:note:{item["id"]}')"><span><strong>{html.escape(item["preview"])}</strong><small>{html.escape(item["notetype"])}</small></span><b>›</b></button>""",
+                )
                 for item in notes
-            )
-            or '<div class="empty-card">No cards yet.</div>'
+            ],
+            "library-list",
         )
-        return f"""<main class="hub-main"><div class="page-head page-head-actions"><div><div class="hub-eyebrow">CARD LIBRARY</div><h1>Browse and edit</h1><p>Manage every note without leaving the AnkiGPT workspace.</p></div>
+        return f"""<main class="hub-main concepts-page library-page"><div class="page-head page-head-actions"><div><div class="hub-eyebrow">CARD LIBRARY</div><h1>Browse and edit</h1><p>Browse notes by deck and select one to edit.</p></div>
         <button class="hub-primary" onclick="pycmd('ankigpt:route:add')">＋ Add card</button></div>
-        <section class="content-card"><div class="search-shell">⌕ <span>Browse {len(notes)} notes</span></div><div class="library-list">{note_rows}</div></section></main>"""
+        <section class="content-card"><label class="search-shell">⌕ <input type="search" placeholder="Search decks and cards" oninput="ankigptFilterDecks(this.value, 'library-groups', 'library-search-status', 'library-search-empty')"><span id="library-search-status">Showing {len(notes)} of {len(notes)}</span></label><div id="library-groups">{note_rows}</div><div class="empty-card" id="library-search-empty"{" hidden" if notes else ""}>No matching cards.</div></section>{_DECK_FILTER_SCRIPT}</main>"""
     if route.startswith("course:"):
         try:
             deck_id = int(route.split(":", 1)[1])
@@ -179,8 +251,14 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         if concept:
             nid, title, summary, points = concept[:4]
             concept_deck_id = int(concept[7]) if len(concept) > 7 else None
-            concepts_route = (
-                f"concepts:{concept_deck_id}" if concept_deck_id else "concepts"
+            concepts_route = str(
+                settings.get(
+                    "concept_return_route",
+                    f"concepts:{concept_deck_id}" if concept_deck_id else "concepts",
+                )
+            )
+            back_label = (
+                "All concepts" if concepts_route == "concepts" else "Deck concepts"
             )
             visual, visual_alt, visual_placement = (
                 (*concept[4:7], "", "", "answer")[:3]
@@ -201,7 +279,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
                     ("both", "Both sides"),
                 )
             )
-            return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:{concepts_route}')">← Course concepts</button>
+            return f"""<main class="hub-main"><button class="text-back" onclick="pycmd('ankigpt:route:{concepts_route}')">← {back_label}</button>
             <div class="page-head"><div class="hub-eyebrow">CONCEPT EDITOR</div><h1>Edit concept</h1>
             <p>Refine the material used to generate future study questions.</p></div>
             <section class="content-card concept-form"><label>Title<input id="concept-title" value="{html.escape(title, quote=True)}"></label>
@@ -240,20 +318,41 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
             if deck
             else ""
         )
-        cards = (
-            "".join(
-                f"""<button class="course-tile" data-search="{html.escape(f"{title} {summary}", quote=True).casefold()}" onclick="pycmd('ankigpt:route:concept:{nid}')">
-            <span class="course-icon">◇</span><span><strong>{html.escape(title)}</strong>
-            <small>{html.escape(summary[:110])}</small></span><b>›</b></button>"""
-                for nid, title, summary, _points, *_rest in visible_concepts
+        deck_names = {int(item.deck_id): item.name for item in decks}
+        entries = []
+        for concept in visible_concepts:
+            nid, title, summary = concept[:3]
+            name = (
+                deck_names.get(concept[7], "Unknown deck")
+                if len(concept) > 7
+                else "Unknown deck"
             )
-            or '<div class="empty-card">No concepts found for this course.</div>'
-        )
-        return f"""<main class="hub-main">{back}<div class="page-head"><div class="hub-eyebrow">KNOWLEDGE LIBRARY</div>
+            search = html.escape(f"{name} {title} {summary}".lower(), quote=True)
+            entries.append(
+                (
+                    name,
+                    f"""<button class="course-tile" data-search="{search}" onclick="pycmd('ankigpt:route:concept:{nid}')">
+            <span class="course-icon">◇</span><span><strong>{html.escape(title)}</strong>
+            <small>{html.escape(summary[:110])}</small></span><b>›</b></button>""",
+                )
+            )
+        cards = _deck_sections(entries, "course-grid")
+        return f"""<main class="hub-main concepts-page">{back}<div class="page-head"><div class="hub-eyebrow">KNOWLEDGE LIBRARY</div>
         <h1>{heading}</h1><p>Browse concepts by course and continue refining what you want to learn.</p></div>
-        <div class="content-card"><label class="search-shell">⌕ <input id="concept-search" type="search" placeholder="Search concepts" oninput="ankigptFilterConcepts(this.value)"><span id="concept-search-status">Showing {len(visible_concepts)} of {len(visible_concepts)}</span></label>
-        <div class="course-grid" id="concept-grid">{cards}</div><div class="empty-card" id="concept-search-empty" hidden>No matching concepts.</div></div>
-        <script>function ankigptFilterConcepts(value){{const query=value.trim().toLocaleLowerCase();const cards=[...document.querySelectorAll('#concept-grid .course-tile')];let shown=0;cards.forEach(card=>{{const visible=!query||card.dataset.search.includes(query);card.hidden=!visible;if(visible)shown++;}});document.getElementById('concept-search-status').textContent='Showing '+shown+' of '+cards.length;document.getElementById('concept-search-empty').hidden=shown!==0;}}</script></main>"""
+        <div class="content-card"><label class="search-shell">⌕ <input id="concept-search" type="search" placeholder="Search decks and concepts" oninput="ankigptFilterConcepts(this.value)"><span id="concept-search-status">Showing {len(visible_concepts)} of {len(visible_concepts)}</span></label>
+        <div id="concept-grid">{cards}</div><div class="empty-card" id="concept-search-empty"{" hidden" if visible_concepts else ""}>No matching concepts.</div></div>
+        {_DECK_FILTER_SCRIPT}</main>"""
+    if route == "focus-summary" and focus_summary:
+        answered = focus_summary.get("answered", 0)
+        goal = focus_summary.get("goal", answered)
+        minutes = focus_summary.get("minutes", 1)
+        return f"""<main class="hub-main"><div class="page-head"><div class="hub-eyebrow">FOCUS SESSION COMPLETE</div>
+        <h1>Your session recap</h1><p>Here is what you completed this session.</p></div>
+        <section class="content-card focus-summary"><div class="metric-grid"><div class="metric blue"><span>Cards completed</span><strong>{answered}</strong></div>
+        <div class="metric green"><span>Session goal</span><strong>{goal}</strong></div><div class="metric amber"><span>Focused minutes</span><strong>{minutes}</strong></div></div>
+        <p>You completed {answered} card review{"s" if answered != 1 else ""}. Choose another small session when you are ready.</p>
+        <div class="hero-actions"><button class="hub-primary" onclick="pycmd('ankigpt:route:study')">Start another session</button>
+        <button class="hub-secondary" onclick="pycmd('ankigpt:route:home')">Return home</button></div></section></main>"""
     if route == "progress":
         new = sum(deck.new_count for deck in decks)
         learning = sum(deck.learn_count for deck in decks)
@@ -306,7 +405,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         </div></main>"""
     if route == "about":
         version = html.escape(str(settings.get("version", "Unknown")))
-        return f"""<main class="hub-main"><div class="page-head"><div class="hub-eyebrow">APPLICATION INFORMATION</div>
+        return f"""<main class="hub-main about-page"><div class="page-head"><div class="hub-eyebrow">APPLICATION INFORMATION</div>
         <h1>About AnkiGPT</h1><p>AI-assisted concept learning built on Anki's proven spaced-repetition system.</p></div>
         <div class="about-grid"><section class="content-card about-summary"><div class="about-mark">A</div>
         <div><h2>AnkiGPT</h2><p class="about-version">Version {version}</p>
@@ -369,6 +468,14 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         <label><input type="checkbox" name="study-mode" value="true_false" checked> True or False</label>
         <label><input type="checkbox" name="study-mode" value="fill_blank" checked> Fill in the blank</label>
         <span id="study-mode-error" hidden>Select at least one study mode.</span>
+        <label class="focus-toggle"><input id="focus-enabled" type="checkbox" onchange="ankigptToggleFocus(this.checked)"> Focus session</label>
+      </div>
+      <div id="focus-options" class="focus-options" hidden>
+        <button type="button" class="hub-secondary" onclick="pycmd('ankigpt:audio')">Background sounds…</button>
+        <strong>Small session goal</strong>
+        <label>Cards <select id="focus-goal"><option value="3">3 · Just start</option><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select></label>
+        <label>Quiet timer <select id="focus-minutes"><option value="0">Untimed</option><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="15">15 minutes</option><option value="25">25 minutes</option></select></label>
+        <small>Navigation is reduced while studying. You can pause or leave at any time.</small>
       </div>
       <div class="deck-card"><table class="hub-table deck-tree">
         <thead><tr><th>Deck</th><th>New</th><th>Learning</th><th>Review</th><th>Status</th></tr></thead>
@@ -376,6 +483,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
       </table></div>
       <script>
       let ankigptSelectedDeck = null;
+      function ankigptToggleFocus(enabled) {{ document.getElementById('focus-options').hidden = !enabled; }}
       document.querySelectorAll('input[name="deck-action"]').forEach(input => input.addEventListener('change', () => {{
         document.getElementById('study-mode-picker').hidden = input.value !== 'study' || !input.checked;
       }}));
@@ -423,8 +531,10 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
           return;
         }}
         document.getElementById('study-mode-error').hidden = true;
+        const focus = document.getElementById('focus-enabled').checked;
+        const focusSuffix = focus ? `:focus:${{document.getElementById('focus-goal').value}}:${{document.getElementById('focus-minutes').value}}` : '';
         const command = action === 'study'
-          ? `ankigpt:study:${{ankigptSelectedDeck}}:${{modes.join(',')}}`
+          ? `ankigpt:study:${{ankigptSelectedDeck}}:${{modes.join(',')}}${{focusSuffix}}`
           : action === 'edit'
             ? `ankigpt:route:concepts:${{ankigptSelectedDeck}}`
             : `ankigpt:route:course:${{ankigptSelectedDeck}}`;
@@ -469,6 +579,31 @@ def _deck_row(deck: Any, parent_id: int | None, depth: int) -> str:
 
 
 _CSS = """
+.deck-group { min-width:0; margin-bottom:12px; border:1px solid #e0e6ee; border-radius:10px; padding:12px; }
+.deck-group > summary { cursor:pointer; color:#243557; font-weight:700; padding:4px; white-space:normal; overflow-wrap:anywhere; }
+.deck-group[open] > summary { margin-bottom:12px; }
+.deck-group-count { color:#718096; font-size:12px; font-weight:400; }
+.deck-group[hidden],.library-row[hidden] { display:none; }
+.library-page .library-row { box-sizing:border-box; min-width:0; gap:12px; white-space:normal; }
+.library-page .library-row > span { min-width:0; }
+.library-page .library-row strong { white-space:normal; overflow-wrap:anywhere; }
+.library-page .page-head-actions { flex-wrap:wrap; }
+
+.concepts-page { white-space:normal; overflow-wrap:anywhere; }
+.concepts-page .course-tile { box-sizing:border-box; min-width:0; width:100%; grid-template-columns:34px minmax(0,1fr) auto; white-space:normal; overflow-wrap:anywhere; line-height:1.45; }
+.concepts-page .course-tile > span { min-width:0; }
+.concepts-page .search-shell { flex-wrap:wrap; }
+.concepts-page .search-shell input { width:100%; flex:1 1 120px; }
+.concepts-page .search-shell span { white-space:normal; }
+@media(max-width:900px){.concepts-page .course-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.concepts-page .content-card{padding:12px}.concepts-page .course-tile{padding:10px;gap:8px}}
+.about-page { white-space:normal; overflow-wrap:anywhere; }
+.about-page p { font-size:14px; line-height:1.6; }
+.about-page .content-card { min-width:0; }
+.about-page .about-grid h2 { font-size:21px; line-height:1.3; }
+.about-page .about-summary > div:last-child { min-width:0; }
+.about-page button { box-sizing:border-box; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:480px){.about-page .about-summary{flex-direction:column;align-items:flex-start}.about-page .content-card{padding:16px}}
 body { background:#eef3f9 !important; color:#14213d; }
 center > table { width:100%; max-width:none; }
 .ankigpt-hub-cell { padding:0 !important; }
@@ -486,7 +621,8 @@ center > table { width:100%; max-width:none; }
 .hub-section { margin-top:28px; }.section-heading { display:flex; align-items:end; justify-content:space-between; margin-bottom:11px; }.section-heading h2 { margin:4px 0 0; font-size:22px; color:#15234a; }.today { color:#718096; font-size:12px; }
 .deck-picker-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; }.deck-picker-actions label { padding:8px 11px; color:#34435f; background:#f7f9fc; border:1px solid #dce3ec; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }.deck-picker-actions input { margin:0 5px 0 0; vertical-align:-1px; }.deck-picker-actions .hub-primary { margin-left:5px; padding:9px 22px; }.deck-selection-status { margin-right:auto; color:#667085; font-size:12px; font-weight:700; }.hub-primary:disabled { cursor:not-allowed; opacity:.45; }
 .study-mode-picker { display:flex; justify-content:flex-end; align-items:center; gap:9px; margin:-2px 0 12px; padding:10px 12px; background:#f7f9fc; border:1px solid #dce3ec; border-radius:9px; font-size:12px; }.study-mode-picker[hidden] { display:none; }.study-mode-picker label { white-space:nowrap; }.study-mode-picker input { vertical-align:-1px; }.study-mode-picker span { color:#b42318; font-weight:700; }
-.deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table tbody tr.selected { color:#102f73; background:#cfe1ff; box-shadow:inset 5px 0 #2367e8, inset 0 0 0 2px #8eb4ff; }.hub-table tbody tr.selected .deck-name small { color:#3157a8; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }.deck-name { display:flex; align-items:center; gap:7px; padding-left:calc(var(--deck-depth) * 21px); }.deck-name small { margin-left:auto; color:#8a94a6; font-size:10px; font-weight:650; text-transform:uppercase; }.deck-selected-badge { display:none; padding:3px 7px; color:#174ea6; background:#fff; border:1px solid #8eb4ff; border-radius:999px; font-size:10px; white-space:nowrap; }.deck-tree tr.selected .deck-name small { margin-left:0; }.deck-tree tr.selected .deck-selected-badge { display:inline-block; margin-left:auto; }.deck-disclosure { display:grid; place-items:center; width:22px; height:22px; padding:0; color:#3157d5; background:transparent; border:0; border-radius:5px; cursor:pointer; }.deck-disclosure:hover { background:#dce7ff; }.deck-disclosure-spacer { width:22px; }
+.focus-toggle{color:#174ea6!important;background:#edf3ff!important}.focus-options{display:flex;align-items:center;gap:14px;margin:-4px 0 12px;padding:12px 14px;color:#34435f;background:#f6f9ff;border:1px solid #cddcff;border-radius:9px;font-size:12px}.focus-options[hidden]{display:none}.focus-options label{display:flex;align-items:center;gap:7px;font-weight:700}.focus-options select{padding:6px 8px;color:#243557;background:#fff;border:1px solid #c9d4e7;border-radius:7px}.focus-options small{margin-left:auto;color:#718096}.focus-summary{max-width:760px}.focus-summary .metric-grid{grid-template-columns:repeat(3,1fr)}
+.deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.deck-tree tbody tr[hidden] { display:none !important; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table tbody tr.selected { color:#102f73; background:#cfe1ff; box-shadow:inset 5px 0 #2367e8, inset 0 0 0 2px #8eb4ff; }.deck-tree tbody tr.selected>td,.deck-tree tbody tr.selected:hover>td { background:#cfe1ff !important; }.hub-table tbody tr.selected .deck-name small { color:#3157a8; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }.deck-name { display:flex; align-items:center; gap:7px; padding-left:calc(var(--deck-depth) * 21px); }.deck-name small { margin-left:auto; color:#8a94a6; font-size:10px; font-weight:650; text-transform:uppercase; }.deck-selected-badge { display:none; padding:3px 7px; color:#174ea6; background:#fff; border:1px solid #8eb4ff; border-radius:999px; font-size:10px; white-space:nowrap; }.deck-tree tr.selected .deck-name small { margin-left:0; }.deck-tree tr.selected .deck-selected-badge { display:inline-block; margin-left:auto; }.deck-disclosure { display:grid; place-items:center; width:22px; height:22px; padding:0; color:#3157d5; background:transparent; border:0; border-radius:5px; cursor:pointer; }.deck-disclosure:hover { background:#dce7ff; }.deck-disclosure-spacer { width:22px; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
 .page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { display:flex; align-items:center; gap:8px; padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.search-shell input { flex:1; min-width:0; padding:0; color:#263653; background:transparent; border:0; outline:0; font:inherit; }.search-shell span { white-space:nowrap; font-size:12px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile[hidden],.empty-card[hidden] { display:none; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }
 .migration-note { display:inline-block; padding:10px 12px; color:#4e5f7d; background:#f2f5fa; border-radius:8px; font-size:12px; }
@@ -497,5 +633,5 @@ center > table { width:100%; max-width:none; }
 .about-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }.about-grid h2 { margin-top:0; color:#17274e; }.about-summary { grid-column:1/-1; display:flex; align-items:center; gap:18px; background:linear-gradient(120deg,#f8fbff,#edf4ff); }.about-mark { display:grid; place-items:center; flex:0 0 68px; width:68px; height:68px; color:#fff; background:linear-gradient(135deg,#2367e8,#6a8dff); border-radius:18px; font-size:36px; font-weight:800; }.about-summary h2 { margin:0; font-size:25px; }.about-version { margin:4px 0 10px; font-weight:700; }.about-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; }
 .course-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:18px; padding:30px; color:#fff; background:linear-gradient(125deg,#173a8f,#3478ee); border-radius:15px; }.course-hero .hub-eyebrow,.course-hero p { color:#dce8ff; }.course-hero h1 { margin:7px 0; font-size:31px; }.course-hero .hub-secondary { color:#173a8f; }.course-total { display:flex; flex-direction:column; align-items:center; min-width:125px; padding:20px; background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.24); border-radius:13px; }.course-total strong { font-size:38px; }.course-total span { color:#dce8ff; font-size:12px; }.course-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .page-head-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; }.library-list { display:flex; flex-direction:column; gap:8px; }.library-row { display:flex; align-items:center; justify-content:space-between; width:100%; padding:14px 16px; color:#243557; background:#fff; border:1px solid #e2e7ef; border-radius:9px; text-align:left; cursor:pointer; }.library-row:hover { border-color:#7da3ef; background:#f7f9ff; }.library-row strong { display:block; max-width:670px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.library-row small { display:block; margin-top:4px; color:#7b879b; }
-@media(max-width:760px){.ankigpt-hub{grid-template-columns:64px}.hub-nav{padding:20px 9px}.hub-brand{margin:0 auto 18px}.hub-brand:not(.hub-mark),.nav-item span{display:none}.nav-item{justify-content:center}.hub-main{padding:18px}.hub-hero{grid-template-columns:1fr}.hub-art{display:none}.hub-table th:nth-child(3),.hub-table td:nth-child(3){display:none}.about-grid{grid-template-columns:1fr}.about-summary{grid-column:auto}}
+@media(max-width:760px){.ankigpt-hub{grid-template-columns:64px minmax(0,1fr)}.hub-nav{padding:20px 9px}.hub-brand{margin:0 auto 18px}.hub-brand:not(.hub-mark),.nav-item span{display:none}.nav-item{justify-content:center}.hub-main{padding:18px}.hub-hero{grid-template-columns:1fr}.hub-art{display:none}.hub-table th:nth-child(3),.hub-table td:nth-child(3){display:none}.about-grid{grid-template-columns:1fr}.about-summary{grid-column:auto}}
 """

@@ -17,6 +17,7 @@ import anki.lang
 from anki import scheduler_pb2
 from anki.cards import Card
 from anki.collection import Collection
+from aqt.ankigpt import focus
 from aqt.ankigpt.concepts import create_concept_notes, deck_id_for_name
 from aqt.ankigpt.prompts import ConceptCandidate
 from aqt.ankigpt.review import ConceptReviewController
@@ -148,6 +149,55 @@ def test_non_concept_card_keeps_scheduler_and_gets_modern_frame(
     assert "ankigpt-standard-card" in question
     assert "Show answer" in question and "ankigpt:review-home" in question
     assert "ankigpt:rate:1" in answer and "ankigpt:rate:4" in answer
+
+
+def test_focus_pause_blocks_answers_and_timer_finishes_after_rating(
+    harness: Callable[..., Harness],
+) -> None:
+    h = harness()
+    try:
+        session = focus.start(5, 1)
+        session.pause()
+        assert h.controller.intercept_answer()
+        h.controller._on_digit(3)
+        h.reviewer._answerCard.assert_not_called()
+        assert h.controller._on_will_answer_card((True, 3), h.reviewer, h.cards[0]) == (
+            False,
+            3,
+        )
+        session.resume()
+        assert h.controller._on_will_answer_card((True, 3), h.reviewer, h.cards[0]) == (
+            True,
+            3,
+        )
+        session.started_at -= 61
+        h.controller._record_focus_answer()
+        assert focus.current() is None
+        summary = focus.last_summary()
+        assert summary is not None and summary["answered"] == 1
+        h.reviewer.mw.progress.single_shot.assert_called_once()
+    finally:
+        focus.stop()
+
+
+def test_focus_deck_exhaustion_shows_partial_recap(
+    harness: Callable[..., Harness],
+) -> None:
+    h = harness()
+    try:
+        session = focus.start(5, 0)
+        session.answered = 2
+        h.controller._on_reviewer_end()
+        assert focus.current() is None
+        summary = focus.last_summary()
+        assert summary is not None and summary["answered"] == 2
+        callback = h.reviewer.mw.progress.single_shot.call_args.args[1]
+        h.reviewer.mw.state = "overview"
+        with patch("aqt.ankigpt.show_shell_route") as show:
+            callback()
+            show.assert_called_once_with(h.reviewer.mw, "focus-summary")
+    finally:
+        focus.stop()
 
 
 def test_missing_api_key_fails_to_overview(harness: Callable[..., Harness]) -> None:

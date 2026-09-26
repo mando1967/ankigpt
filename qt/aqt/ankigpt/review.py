@@ -30,7 +30,7 @@ from anki.notes import NoteId
 from anki.scheduler.v3 import Scheduler as V3Scheduler
 from anki.template import TemplateRenderOutput
 from aqt import gui_hooks
-from aqt.ankigpt import concepts, prompts, retrieve
+from aqt.ankigpt import concepts, focus, prompts, retrieve
 from aqt.ankigpt.llm import FakeLLMClient, LLMClient, make_client
 from aqt.ankigpt.prompts import (
     GeneratedQuestion,
@@ -189,6 +189,8 @@ class ConceptReviewController:
         Returns True while a typed answer is being graded asynchronously;
         _showAnswer is re-invoked when grading completes.
         """
+        if (session := focus.current()) and session.paused_at is not None:
+            return True
         r = self.reviewer
         card = r.card
         cur = self._current
@@ -582,6 +584,7 @@ class ConceptReviewController:
         gui_hooks.reviewer_did_show_question.append(self._on_show_question)
         gui_hooks.reviewer_did_show_answer.append(self._on_show_answer)
         gui_hooks.reviewer_did_answer_card.append(self._on_answer_card)
+        gui_hooks.reviewer_will_answer_card.append(self._on_will_answer_card)
         gui_hooks.reviewer_will_init_answer_buttons.append(self._on_init_buttons)
         gui_hooks.reviewer_will_end.append(self._on_reviewer_end)
         gui_hooks.webview_did_receive_js_message.append(self._on_js_message)
@@ -592,12 +595,14 @@ class ConceptReviewController:
         gui_hooks.reviewer_did_show_question.remove(self._on_show_question)
         gui_hooks.reviewer_did_show_answer.remove(self._on_show_answer)
         gui_hooks.reviewer_did_answer_card.remove(self._on_answer_card)
+        gui_hooks.reviewer_will_answer_card.remove(self._on_will_answer_card)
         gui_hooks.reviewer_will_init_answer_buttons.remove(self._on_init_buttons)
         gui_hooks.reviewer_will_end.remove(self._on_reviewer_end)
         gui_hooks.webview_did_receive_js_message.remove(self._on_js_message)
         gui_hooks.state_shortcuts_will_change.remove(self._on_state_shortcuts)
 
     def _on_show_question(self, card: Card) -> None:
+        self._sync_focus_bar()
         self.mw.toolbarWeb.hide()
         self.mw.bottomWeb.hide()
         self.mw.form.menubar.hide()
@@ -617,8 +622,9 @@ class ConceptReviewController:
         header = (
             '<div class="ankigpt-study-top"><button type="button" '
             "onclick=\"pycmd('ankigpt:review-home')\">← Study Hub</button>"
-            f'<div class="ankigpt-header">{html.escape(deck_name)}</div></div>'
-        )
+            f'<div class="ankigpt-header">{html.escape(deck_name)}</div>'
+            '<button type="button" onclick="pycmd(\'ankigpt:browser\')">Web browser</button></div>'
+        ) + _focus_bar()
         if kind == "reviewQuestion":
             actions = (
                 '<div class="ankigpt-study-actions"><button type="button" '
@@ -636,7 +642,10 @@ class ConceptReviewController:
         )
 
     def _on_show_answer(self, card: Card) -> None:
+        self._sync_focus_bar()
         self.mw.bottomWeb.hide()
+        if focus.current() is not None:
+            return
         cur = self._current
         if cur is None or cur.card_id != card.id or not cur.graded or not cur.grade:
             return
@@ -658,6 +667,14 @@ class ConceptReviewController:
             max(200, cur.settings.auto_submit_delay_ms), fire, False, parent=self.mw
         )
 
+    def _sync_focus_bar(self) -> None:
+        if session := focus.current():
+            self.reviewer.web.eval(
+                "window.ankigptFocusSync && window.ankigptFocusSync("
+                f"{session.remaining_seconds()},"
+                f"{str(session.paused_at is not None).lower()});"
+            )
+
     def _cancel_auto_submit(self) -> None:
         if self._auto_timer is not None:
             self._auto_timer.stop()
@@ -666,6 +683,7 @@ class ConceptReviewController:
 
     def _on_answer_card(self, reviewer: Reviewer, card: Card, ease: int) -> None:
         self._cancel_auto_submit()
+        self._record_focus_answer()
         cur = self._current
         if cur is None or cur.card_id != card.id:
             return
@@ -692,6 +710,32 @@ class ConceptReviewController:
         except Exception:
             pass
 
+    def _on_will_answer_card(
+        self, ease_tuple: tuple[bool, Ease], reviewer: Reviewer, card: Card
+    ) -> tuple[bool, Ease]:
+        session = focus.current()
+        if reviewer is self.reviewer and session and session.paused_at is not None:
+            return (False, ease_tuple[1])
+        return ease_tuple
+
+    def _record_focus_answer(self) -> None:
+        from aqt.ankigpt import focus
+
+        session = focus.current()
+        if session is None:
+            return
+        session.answered += 1
+        if not session.complete:
+            return
+        focus.finish()
+
+        def show_summary() -> None:
+            from aqt.ankigpt import show_shell_route
+
+            show_shell_route(self.mw, "focus-summary")
+
+        self.mw.progress.single_shot(25, show_summary, False)
+
     def _on_init_buttons(
         self,
         buttons: tuple[tuple[int, str], ...],
@@ -709,16 +753,64 @@ class ConceptReviewController:
         )
 
     def _on_reviewer_end(self) -> None:
+        from aqt.ankigpt.audio import stop_audio
+
+        stop_audio()
         self._cancel_auto_submit()
         self._current = None
+        from aqt.ankigpt.focus import finish
 
-    def _on_js_message(
+        if finish() is not None:
+
+            def show_summary() -> None:
+                from aqt.ankigpt import show_shell_route
+
+                if self.mw.col and self.mw.state in {"overview", "deckBrowser"}:
+                    show_shell_route(self.mw, "focus-summary")
+
+            self.mw.progress.single_shot(25, show_summary, False)
+
+    def _on_js_message(  # noqa: PLR0911 - each reviewer action exits immediately
         self, handled: tuple[bool, Any], message: str, context: Any
     ) -> tuple[bool, Any]:
         if context is not self.reviewer:
             return handled
+        if message == "ankigpt:browser":
+            from aqt.ankigpt.browser import show_browser
+
+            show_browser(self.mw)
+            return (True, None)
+        if message == "ankigpt:audio":
+            from aqt.ankigpt.audio import show_audio
+
+            show_audio(self.mw)
+            return (True, None)
         if message == "ankigpt:review-home":
-            self.mw.moveToState("deckBrowser")
+            from aqt.ankigpt import show_shell_route
+
+            summary = focus.finish()
+            show_shell_route(self.mw, "focus-summary" if summary else "home")
+            return (True, None)
+        if message == "ankigpt:focus-pause":
+            from aqt.ankigpt.focus import current
+
+            if session := current():
+                self._cancel_auto_submit()
+                session.pause()
+                from aqt.ankigpt.audio import focus_paused
+
+                focus_paused()
+            return (True, None)
+        if message == "ankigpt:focus-resume":
+            from aqt.ankigpt.focus import current
+
+            if session := current():
+                session.resume()
+                from aqt.ankigpt.audio import focus_resumed
+
+                focus_resumed()
+            return (True, None)
+        if (session := focus.current()) and session.paused_at is not None:
             return (True, None)
         if message == "ankigpt:ask-ai":
             self._ask_ai()
@@ -790,6 +882,8 @@ class ConceptReviewController:
             shortcuts.append((key, partial(self._on_digit, ease)))
 
     def _on_digit(self, ease: int) -> None:
+        if (session := focus.current()) and session.paused_at is not None:
+            return
         r = self.reviewer
         cur = self._current
         if (
@@ -830,6 +924,10 @@ def _default_store() -> Store:
 # ----------------------------------------------------------------------
 
 _ALLOWED_TAGS = ("b", "i", "em", "strong", "code", "br", "sub", "sup", "u")
+
+_FOCUS_CSS = """
+.ankigpt-focus-bar{display:grid;grid-template-columns:auto 1fr auto auto auto;align-items:center;gap:12px;padding:10px 22px;color:#42526b;background:#edf3ff;border-bottom:1px solid #d5e1fb;font-size:12px}.ankigpt-focus-bar strong{color:#174ea6}.ankigpt-focus-track{height:6px;overflow:hidden;background:#d7e2f7;border-radius:10px}.ankigpt-focus-track i{display:block;height:100%;background:#3974df}.ankigpt-focus-bar button{padding:6px 10px;color:#24406d;background:#fff;border:1px solid #c8d5e9;border-radius:7px;font-weight:700;cursor:pointer}.ankigpt-break-overlay{position:fixed;z-index:20;inset:0;display:grid;place-items:center;background:rgba(18,32,74,.64)}.ankigpt-break-overlay[hidden]{display:none}.ankigpt-break-card{max-width:420px;padding:32px;text-align:center;background:#fff;border-radius:16px;box-shadow:0 20px 55px rgba(0,0,0,.25)}.ankigpt-break-card h2{margin-top:0}.ankigpt-break-card button{padding:11px 20px;color:#fff;background:#2367e8;border:0;border-radius:9px;font-weight:750;cursor:pointer}
+"""
 
 _UNIVERSAL_REVIEW_CSS = """
 html,body{min-height:100%;background:#eef3f9!important;color:#17274e}
@@ -887,6 +985,35 @@ def _mode_name(mode: Mode) -> str:
     }.get(mode, mode)
 
 
+def _focus_bar() -> str:
+    from aqt.ankigpt.focus import current
+
+    session = current()
+    if session is None:
+        return ""
+    remaining = session.remaining_seconds()
+    completed = min(session.answered, session.card_goal)
+    percent = round(100 * completed / session.card_goal)
+    timer = "Untimed" if not session.duration_minutes else ""
+    return f"""<style>{_FOCUS_CSS}
+    .ankigpt-focus-bar{{display:flex;flex-wrap:wrap}}.ankigpt-focus-track{{flex:1;min-width:50px}}
+    </style><div class="ankigpt-focus-bar"><strong>Focus session</strong>
+    <div class="ankigpt-focus-track" aria-label="{completed} of {session.card_goal} cards completed"><i style="width:{percent}%"></i></div>
+    <span>{completed} / {session.card_goal} cards</span><span id="ankigpt-focus-time">{timer}</span>
+    <button type="button" onclick="pycmd('ankigpt:audio')">Background sounds</button>
+    <button type="button" onclick="ankigptFocusBreak()">Take a break</button></div>
+    <div id="ankigpt-break" class="ankigpt-break-overlay" hidden><div class="ankigpt-break-card"><h2>Break time</h2>
+    <p>Move, stretch, or get some water. Your session is paused.</p><button type="button" onclick="ankigptFocusResume()">Resume with this card</button>
+    <button type="button" onclick="pycmd('ankigpt:review-home')">End session</button></div></div>
+    <script>(function(){{let remaining={remaining};const timed={str(bool(session.duration_minutes)).lower()};let paused=false;
+    const label=document.getElementById('ankigpt-focus-time');function draw(){{if(!timed)return;if(remaining<=0){{label.textContent='Time reached · finish this card';return;}}const m=Math.floor(remaining/60),s=remaining%60;label.textContent=m+':'+String(s).padStart(2,'0');}}
+    window.ankigptFocusBreak=function(){{paused=true;document.getElementById('ankigpt-break').hidden=false;pycmd('ankigpt:focus-pause');}};
+    window.ankigptFocusResume=function(){{document.getElementById('ankigpt-break').hidden=true;paused=false;pycmd('ankigpt:focus-resume');}};
+    window.ankigptFocusSync=function(seconds,isPaused){{remaining=seconds;paused=isPaused;document.getElementById('ankigpt-break').hidden=!paused;draw();}};
+    clearInterval(window.ankigptFocusInterval);
+    draw();if(timed)window.ankigptFocusInterval=setInterval(function(){{if(!label.isConnected){{clearInterval(window.ankigptFocusInterval);return;}}if(!paused&&remaining>0){{remaining--;draw();}}}},1000);}})();</script>"""
+
+
 def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
     bits = []
     if title:
@@ -898,8 +1025,11 @@ def _header(mode: Mode, mastery: MasteryInfo | None, title: str = "") -> str:
     return (
         '<div class="ankigpt-study-top"><button type="button" '
         "onclick=\"pycmd('ankigpt:review-home')\">← Study Hub</button>"
-        f'<div class="ankigpt-header">{details}</div><button type="button" '
+        f'<div class="ankigpt-header">{details}</div>'
+        '<button type="button" onclick="pycmd(\'ankigpt:browser\')">Web browser</button>'
+        '<button type="button" '
         "onclick=\"pycmd('ankigpt:ask-ai')\">✦ Ask AI</button></div>"
+        f"{_focus_bar()}"
     )
 
 
