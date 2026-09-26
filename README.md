@@ -11,6 +11,9 @@ This repository is maintained at
 from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 [`ankitects/anki`](https://github.com/ankitects/anki).
 
+Current source version: **26.08.2** (see [`.version`](.version)).
+Available installer versions are listed on the Releases page.
+
 ## What it does
 
 - Creates concept decks from PDF, DOCX, Markdown, plain-text, folder, and web
@@ -35,13 +38,20 @@ from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 - Provides contextual **Ask AI** assistance while editing and studying.
 - Supports attached images and AI-generated visual aids for concepts.
 - Shows the passages used to form a question and opens them in context.
+- Groups Concepts and Card Library entries into searchable, expandable deck
+  sections, with entry counts and full subdeck names.
+- Offers focus sessions with card goals, optional timers, breaks, and a recap.
+- Plays local background audio or generated white, pink, and brown noise.
+- Includes browser tabs with bookmarks for myNoise and How to Study.
 - Retains Anki scheduling, profiles, synchronization, backup, import, export,
   database checks, and media management.
 
 ## Application tour
 
-The screenshots below come from the running application and its sample
-microeconomics course.
+The screenshots below illustrate the application and its sample
+microeconomics course. Some images predate the deck grouping and layout
+updates in 26.08.2. See the [Study Hub guide](docs/ankigpt/study-hub.md)
+for current navigation, focus, audio, and browser behavior.
 
 ![Current AnkiGPT Study Hub](docs/ankigpt/screenshots/01-deck-list.png)
 
@@ -100,6 +110,18 @@ Clear guidance improves extraction. For example:
 > moments, and common sign-convention errors. Exclude administrative
 > instructions and quiz formatting.
 
+## Decks and local data
+
+Decks are stored together in each profile's `collection.anki2` database,
+not as separate files. On Windows the default profile folder is
+`%APPDATA%\Anki2\<profile name>\` (for example, `User 1`). Card media is
+in `collection.media`, and additional AnkiGPT data is in `ankigpt.sqlite`.
+
+Rebuilding the application normally leaves profile data intact. For a complete
+manual profile backup, close AnkiGPT and copy the entire profile folder.
+See [storage and backups](docs/ankigpt/study-hub.md#storage-and-backups)
+for details and custom data locations.
+
 ## AI and source handling
 
 AnkiGPT does not need to treat every line of an uploaded document as a study
@@ -142,7 +164,7 @@ The [AnkiGPT Windows MSI workflow](.github/workflows/ankigpt-windows-msi.yml)
 builds a self-contained Windows x64 installer.
 
 - Run **Actions → AnkiGPT Windows MSI → Run workflow** for a test artifact.
-- Push a tag such as `ankigpt-v1.0.0` to build an MSI and publish a GitHub
+- Push a tag such as `ankigpt-v26.08.2` to build an MSI and publish a GitHub
   Release automatically.
 - Locally generated installers are written to `out/installer/dist/`.
 - The repository's `release/` directory can hold local copies; its artifacts
