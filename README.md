@@ -11,7 +11,7 @@ This repository is maintained at
 from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 [`ankitects/anki`](https://github.com/ankitects/anki).
 
-Current source version: **26.08.3** (see [`.version`](.version)).
+Current source version: **26.08.4** (see [`.version`](.version)).
 Available installer versions are listed on the Releases page.
 
 ## What it does
@@ -101,7 +101,7 @@ Anki features can operate locally without an AI connection.
 The published 26.08.2 and 26.08.3 builds check the original fork's update feed
 and may not discover releases here. Download and run the MSI from this
 repository's Releases page manually. The updater correction is listed under
-**Unreleased** in [the changelog](CHANGELOG.md); it requires a newly built MSI
+**26.08.4** in [the changelog](CHANGELOG.md); it requires a newly built MSI
 before installed copies can use it.
 
 ## First-time setup
@@ -181,7 +181,7 @@ The [AnkiGPT Windows MSI workflow](.github/workflows/ankigpt-windows-msi.yml)
 builds a self-contained Windows x64 installer.
 
 - Run **Actions → AnkiGPT Windows MSI → Run workflow** for a test artifact.
-- Push a tag such as `ankigpt-v26.08.3` to build an MSI and publish a GitHub
+- Push a tag such as `ankigpt-v26.08.4` to build an MSI and publish a GitHub
   Release automatically.
 - Run `build-windows-installer.bat upload=0` locally to build an MSI and move it
   from `out/installer/dist/` to `release/`. Use `upload=1` to also upload it to

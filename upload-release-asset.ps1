@@ -11,9 +11,17 @@ try {
         $file.Name -cne "anki-$version-win-x64.msi") {
         throw 'Installer filename, release tag, and .version must match.'
     }
-    & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        $commit = & git -C $PSScriptRoot rev-parse HEAD
+    # Windows PowerShell 5.1 turns redirected native stderr into a terminating
+    # error under Stop, before we can handle gh's expected "release not found".
+    try {
+        $ErrorActionPreference = 'Continue'
+        & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+        $releaseExists = $LASTEXITCODE -eq 0
+    } finally {
+        $ErrorActionPreference = 'Stop'
+    }
+    if (-not $releaseExists) {
+        $commit = & git -c "safe.directory=$($PSScriptRoot.Replace('\', '/'))" -C $PSScriptRoot rev-parse HEAD
         if ($LASTEXITCODE -ne 0) { throw 'Could not determine the source commit.' }
         & gh api "repos/$env:GITHUB_REPOSITORY/commits/$commit" --silent
         if ($LASTEXITCODE -ne 0) { throw 'Push the source commit before creating its release.' }

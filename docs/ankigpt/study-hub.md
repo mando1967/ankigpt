@@ -1,6 +1,6 @@
 # Study Hub guide
 
-This guide describes the features in source version 26.08.3. Installing an
+This guide describes the features in source version 26.08.4. Installing an
 older release may show a different interface.
 
 ## Concepts and Card Library
@@ -104,7 +104,7 @@ Automatic collection backups are not a complete copy of the profile's media
 and AnkiGPT sidecar database. Recompiling the application normally does not
 change these profile files.
 
-## Building version 26.08.3
+## Building version 26.08.4
 
 The root [`.version`](../../.version) file supplies the application build version.
 The Windows MSI workflow can override it through its version input or release

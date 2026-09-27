@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 26.08.4
 
+- Fixed Windows PowerShell aborting on an expected missing release instead of creating it before uploading the MSI.
 - Fixed update checks using the original fork's release feed instead of `mando1967/ankigpt`, and added support for `ankigpt-v` version tags. Previously installed versions require a manual MSI update to receive this fix.
 - Aligned CI and local MSI asset names so uploading the same version replaces its asset instead of creating a second differently named installer.
 - Fixed local MSI uploads attaching new versions to an older release. The uploader now selects the installer matching `.version`, uses its own `ankigpt-v` release tag, and creates missing releases with version-specific changelog notes and a pushed source commit.
