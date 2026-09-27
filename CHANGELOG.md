@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.08.3
+
+- Added a bundled beginner-friendly How To guide with annotated screenshots, accessible from a built-in bookmark and shown when the browser first opens in a profile session.
+- Added the Khan Academy bookmark, protected built-in bookmarks from deletion, and required confirmation before deleting user bookmarks.
+- Made bookmark selection load the page immediately.
+- Blocked automatic popup windows while preserving user-initiated links to new tabs.
+- Added filtering for known ad services and common in-page banners and overlays, with a remembered per-site option to allow ads.
+
 ## 26.08.2
 
 ### Study and course creation

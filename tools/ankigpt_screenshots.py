@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import faulthandler
 import os
-import shutil
 import sys
 import time
 import traceback
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
@@ -30,7 +30,10 @@ sys.path.extend(["pylib", "qt", "out/pylib", "out/qt"])
 
 import aqt  # noqa: E402
 from aqt.profiles import ProfileManager  # noqa: E402
-from aqt.qt import QFont, QFontDatabase, QWidget  # noqa: E402
+from aqt.qt import QFont, QFontDatabase, QScrollArea, QWidget  # noqa: E402
+
+if TYPE_CHECKING:
+    from aqt.main import AnkiQt
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/ankigpt/screenshots")
 BASE = sys.argv[2] if len(sys.argv) > 2 else "/tmp/ankigpt-screenshots-base"
@@ -51,12 +54,21 @@ SHOTS: list[str] = []
 
 
 def seed_base() -> None:
-    shutil.rmtree(BASE, ignore_errors=True)
+    if Path(BASE).exists():
+        raise ValueError("Use a new, empty profile path for screenshots.")
     os.makedirs(BASE, exist_ok=True)
     pm = ProfileManager(Path(BASE))
     pm.setupMeta()
     pm.setLang("en_US")
     pm.db.close()
+
+
+def scroll_to_widget(widget: QWidget) -> None:
+    scroll = widget.parentWidget()
+    while scroll is not None and not isinstance(scroll, QScrollArea):
+        scroll = scroll.parentWidget()
+    if isinstance(scroll, QScrollArea):
+        scroll.ensureWidgetVisible(widget)
 
 
 def run() -> None:
@@ -114,7 +126,7 @@ def run() -> None:
 
     # ---- 1. create-deck dialog, filled in
     dialog = CreateConceptDeckDialog(mw)
-    dialog.resize(760, 620)
+    dialog.resize(940, 900)
     dialog._add_source_paths([str(SAMPLE)])
     dialog.deck_name.setCurrentText(COURSE)
     dialog.subcategory.setText(SUBCATEGORY)
@@ -122,6 +134,8 @@ def run() -> None:
     dialog.target.setValue(12)
     dialog.mode.setCurrentIndex(1)  # typed
     shot(dialog, "02-create-deck")
+    scroll_to_widget(dialog.instructions)
+    shot(dialog, "22-course-goals")
 
     # ---- 2. representative book structure review
     from aqt.ankigpt import extract
@@ -192,13 +206,23 @@ def run() -> None:
     )
     settle(1.0)
     shot(mw, "01-deck-list", 1.0)
+    mw.deckBrowser.web.eval(
+        "document.getElementById('focus-enabled').checked = true; ankigptToggleFocus(true);"
+    )
+    shot(mw, "19-focus-session")
     shell_shot("concepts", "14-concepts")
     concepts = ankigpt_module._concept_records(mw)
     if concepts:
         shell_shot(f"concept:{concepts[0][0]}", "12-concept-editor")
+        mw.deckBrowser.web.eval("window.scrollTo(0, document.body.scrollHeight);")
+        shot(mw, "24-concept-tools")
     shell_shot(f"course:{int(deck_id)}", "15-course")
     shell_shot("settings", "16-settings")
+    mw.deckBrowser.web.eval("window.scrollTo(0, document.body.scrollHeight);")
+    shot(mw, "25-settings-save")
     shell_shot("about", "13-about")
+    shell_shot("library", "18-card-library")
+    shell_shot("system", "23-backups")
     ankigpt_module._shell_route = "home"
 
     # ---- 4. select the generated course before entering the reviewer
@@ -222,8 +246,37 @@ def run() -> None:
     reviewer.web.eval("window.scrollTo(0, 0);")
     shot(mw, "07-review-graded", 0.5)
 
+    extra_guide_shots(mw, shot)
     mw.unloadProfileAndExit()
     pump(lambda: aqt.mw is None or aqt.mw.col is None, "profile unload", 30)
+
+
+def extra_guide_shots(mw: AnkiQt, shot: Callable[[QWidget, str], None]) -> None:
+    """Capture guide dialogs using the same disposable sample profile."""
+    from aqt.ankigpt import audio, browser
+    from aqt.ankigpt.inquiry import InquiryContext, InquiryDialog
+
+    inquiry = InquiryDialog(
+        mw,
+        mw.pm,
+        InquiryContext(
+            "study",
+            "Opportunity cost",
+            "The value of the next best alternative forgone.",
+            [],
+        ),
+    )
+    inquiry.show()
+    shot(inquiry, "26-ask-ai")
+    inquiry.close()
+    audio.show_audio(mw)
+    assert audio._audio is not None
+    audio._audio.resize(640, 460)
+    shot(audio._audio, "20-background-audio")
+    audio._audio.hide()
+    browser.show_browser(mw)
+    shot(mw, "21-browser")
+    browser.close_browser()
 
 
 if __name__ == "__main__":

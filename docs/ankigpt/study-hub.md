@@ -1,6 +1,6 @@
 # Study Hub guide
 
-This guide describes the features in source version 26.08.2. Installing an
+This guide describes the features in source version 26.08.3. Installing an
 older release may show a different interface.
 
 ## Concepts and Card Library
@@ -51,9 +51,23 @@ the site; the local audio volume, break, and session controls do not control it.
 
 Choose **Web browser** from the sidebar to open a browser tab alongside Study.
 Enter an HTTP or HTTPS address, use the navigation buttons, or open a bookmark.
-Default bookmarks include **myNoise** and **How to Study** (`how-to-study.com`).
-You can add and remove bookmarks, open more tabs, mute a tab, save downloads,
+The built-in **AnkiGPT How To** bookmark opens the illustrated offline guide
+included with the app. It is always available, including in existing profiles.
+The guide opens automatically the first time the browser is opened in a profile
+session, unless a specific website was requested. Built-in website bookmarks
+include **myNoise**, **How to Study** (`how-to-study.com`), and **Khan Academy**.
+Selecting a bookmark loads it immediately in the current tab. The **Open bookmark**
+button can also reopen the selected bookmark.
+Built-in bookmarks cannot be deleted. Removing a user-added bookmark requires
+confirmation. You can add bookmarks, open more tabs, mute a tab, save downloads,
 or open the current page externally.
+
+Automatic pop-up windows and tabs are blocked. New tabs requested directly by
+a click or keyboard action remain available. An offline filter blocks known ad
+services and hides common in-page ad banners and overlays, including dynamically
+inserted ads. It does not cover every ad or hide cookie notices. **Allow ads on
+this site** disables both filters for the current hostname, reloads its open tabs,
+and remembers the exception in the profile. Uncheck it to restore filtering.
 
 Website audio can continue when returning to Study. Switching to a browser tab
 pauses an active focus session; returning resumes it only if the browser caused
@@ -89,7 +103,7 @@ Automatic collection backups are not a complete copy of the profile's media
 and AnkiGPT sidecar database. Recompiling the application normally does not
 change these profile files.
 
-## Building version 26.08.2
+## Building version 26.08.3
 
 The root [`.version`](../../.version) file supplies the application build version.
 The Windows MSI workflow can override it through its version input or release

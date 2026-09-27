@@ -153,6 +153,23 @@ ftl-sync:
 ftl-deprecate:
     {{ ninja }} ftl-deprecate
 
+# Capture app screens using a new disposable profile (set ANKIGPT_FAKE_LLM=1 for offline samples).
+ankigpt-screenshots output base:
+    {{ if os() == "windows" { "out\\pyenv\\Scripts\\python.exe" } else { "out/pyenv/bin/python" } }} tools/ankigpt_screenshots.py "{{ output }}" "{{ base }}"
+
+# Check the guide's browser integration (requires the normal built Python environment).
+ankigpt-guide-tests:
+    {{ if os() == "windows" { "out\\pyenv\\Scripts\\python.exe" } else { "out/pyenv/bin/python" } }} -m pytest qt/tests/test_ankigpt_browser.py
+
+# Format and lint only the guide's Python integration and screenshot tools.
+ankigpt-guide-lint:
+    {{ if os() == "windows" { "out\\pyenv\\Scripts\\python.exe" } else { "out/pyenv/bin/python" } }} -m ruff format qt/aqt/ankigpt/adfilter.py qt/aqt/ankigpt/browser.py qt/tests/test_ankigpt_browser.py tools/ankigpt_screenshots.py tools/ankigpt_guide_check.py
+    {{ if os() == "windows" { "out\\pyenv\\Scripts\\python.exe" } else { "out/pyenv/bin/python" } }} -m ruff check qt/aqt/ankigpt/adfilter.py qt/aqt/ankigpt/browser.py qt/tests/test_ankigpt_browser.py tools/ankigpt_screenshots.py tools/ankigpt_guide_check.py
+
+# Render desktop and narrow guide layouts in Qt.
+ankigpt-guide-check:
+    {{ if os() == "windows" { "out\\pyenv\\Scripts\\python.exe" } else { "out/pyenv/bin/python" } }} tools/ankigpt_guide_check.py
+
 # Build documentation site
 docs:
     {{ uv }} run --group docs sphinx-build -b html docs out/docs/html

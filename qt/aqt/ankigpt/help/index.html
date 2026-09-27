@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AnkiGPT's offline, illustrated guide to creating courses, studying, and protecting your learning data.">
+  <title>AnkiGPT How To</title>
+  <link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<a class="skip" href="#start">Skip to instructions</a>
+<header>
+  <div class="eyebrow">AnkiGPT · Your offline handbook</div>
+  <h1>From course material<br>to a daily study habit.</h1>
+  <p>Set up your AI connection, build a course, and learn one concept at a time. Follow the numbered highlights to find the controls in each screenshot.</p>
+</header>
+<div class="layout">
+<nav aria-label="Guide contents">
+  <strong>How do I…</strong>
+  <a href="#start">1. Get started</a>
+  <a href="#setup">2. Connect an AI provider</a>
+  <a href="#create-course">3. Create a course</a>
+  <a href="#books">4. Organize a book</a>
+  <a href="#preview">5. Review generated concepts</a>
+  <a href="#study">6. Choose what to study</a>
+  <a href="#answer">7. Answer and review</a>
+  <a href="#concepts">8. Edit concepts and cards</a>
+  <a href="#ai-help">9. Ask AI for help</a>
+  <a href="#visuals">10. Add a visual aid</a>
+  <a href="#focus">11. Run a focus session</a>
+  <a href="#audio">12. Play background sound</a>
+  <a href="#browser">13. Use browser tabs</a>
+  <a href="#backups">14. Back up and move data</a>
+  <a href="#troubleshooting">15. Solve common problems</a>
+</nav>
+<main id="start">
+<section>
+  <span class="number">01 / GET STARTED</span>
+  <h2>Your first session</h2>
+  <p>AnkiGPT turns your source documents into <strong>concepts</strong>: a title, an explanation, and key points. During study it uses those concepts and source passages to generate questions. Anki's scheduler decides when cards return for review.</p>
+  <ol>
+    <li>Install the Windows MSI and launch the app. For an upgrade, close the app and run the new installer; uninstall first only if the installer asks you to.</li>
+    <li>Open <strong>Settings</strong> and <a href="#setup">configure your AI provider</a>.</li>
+    <li>Choose <strong>Create Course</strong>, add a short source document, and review the proposed concepts.</li>
+    <li>Choose <strong>Study</strong>, select a deck and question types, then click <strong>GO</strong>.</li>
+  </ol>
+  <p class="note">Start with a small document and about five concepts. Once you understand the process, try a longer chapter or a group of related documents.</p>
+  <figure>
+    <a class="shot" href="images/01-deck-list.png" aria-label="Enlarge the Study Hub screenshot">
+      <img src="images/01-deck-list.png" alt="Study Hub with the Create Course, Study, and Settings navigation highlighted.">
+      <span class="mark" style="--x:6%;--y:26%;--w:16%;--h:10.5%"><b>1</b></span>
+      <span class="mark" style="--x:6%;--y:70%;--w:16%;--h:5%"><b>2</b></span>
+    </a>
+    <figcaption><strong>1</strong> Create a course or start studying. <strong>2</strong> Configure your connection in Settings.</figcaption>
+  </figure>
+  <p>This guide is stored with the app and works without internet. AI requests and websites still need a connection. Screenshots use a demonstration profile and simulated AI content; your course text and answers will differ.</p>
+</section>
+<section id="setup">
+  <span class="number">02 / SETUP</span><h2>Connect an AI provider</h2>
+  <ol>
+    <li>Open <strong>Settings</strong> in the left sidebar.</li>
+    <li>Select your <strong>Provider</strong> and enter its <strong>API key</strong>.</li>
+    <li>Enter a model available to your provider account. For an OpenAI-compatible service, use that service's model name and base URL. The model shown in the screenshot is an example.</li>
+    <li>Click <strong>Save settings</strong>, then <strong>Test connection</strong>. Scroll down if these buttons are below the visible area.</li>
+  </ol>
+  <figure><a class="shot" href="images/16-settings.png" aria-label="Enlarge AI connection settings">
+    <img src="images/16-settings.png" alt="AI connection panel showing Provider, API key, Model, and Base URL.">
+    <span class="mark" style="--x:24.5%;--y:43%;--w:33%;--h:37%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Enter the connection details supplied by your AI provider.</figcaption></figure>
+  <figure><a class="shot" href="images/25-settings-save.png" aria-label="Enlarge the lower settings controls">
+    <img src="images/25-settings-save.png" alt="Lower part of Settings, including Test connection and Save settings.">
+    <span class="mark" style="--x:36%;--y:72%;--w:21%;--h:6%"><b>2</b></span>
+  </a><figcaption><strong>2</strong> Save, then test the connection. Leaving the key field blank keeps the saved key.</figcaption></figure>
+  <p>AI features send relevant prompts and course content to the provider you configure. Review its account and billing requirements. You can read this guide and use ordinary collection tools without an AI connection.</p>
+</section>
+<section id="create-course">
+  <span class="number">03 / CREATE</span><h2>Create a course from your material</h2>
+  <ol>
+    <li>Click <strong>Create Course</strong>. Use <strong>Add Files</strong>, <strong>Add Folder</strong>, or <strong>Add URL</strong>. Supported documents include PDF, DOCX, Markdown, and plain text.</li>
+    <li>For several documents, choose one combined deck or separate decks. For a textbook, enable <strong>This source is a book</strong> and follow the <a href="#books">book workflow</a>.</li>
+    <li>Scroll to <strong>Course Goals</strong>. Choose or enter a course/category and, for non-book sources, a subcategory. Fill in the subject, learning level, focus topics, and exclusions.</li>
+    <li>Use <strong>Additional guidance</strong> to explain what you want to learn. Review the remaining options farther down the form, then click <strong>Extract Concepts</strong>.</li>
+  </ol>
+  <figure><a class="shot" href="images/02-create-deck.png" aria-label="Enlarge study material controls">
+    <img src="images/02-create-deck.png" alt="Create Course dialog with source-file controls highlighted.">
+    <span class="mark" style="--x:4%;--y:43%;--w:91%;--h:20%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Add your material and choose how multiple sources should be grouped.</figcaption></figure>
+  <figure><a class="shot" href="images/22-course-goals.png" aria-label="Enlarge course goals">
+    <img src="images/22-course-goals.png" alt="Course Goals fields and Extract Concepts button.">
+    <span class="mark" style="--x:4%;--y:46%;--w:91%;--h:46%"><b>2</b></span>
+    <span class="mark" style="--x:75.5%;--y:93%;--w:15%;--h:5%"><b>3</b></span>
+  </a><figcaption><strong>2</strong> Describe your course and learning goals. <strong>3</strong> Start extraction.</figcaption></figure>
+  <p class="example"><strong>Example guidance:</strong> “First-year microeconomics. Focus on opportunity cost, supply and demand, and elasticity. Explain the intuition. Exclude class schedules, grading policies, and administrative instructions.”</p>
+  <p>Folders are searched recursively. Cloud-synced files must be available locally. Web sources must be readable by the app; pages requiring a login may not work.</p>
+</section>
+<section id="books">
+  <span class="number">04 / BOOKS</span><h2>Review a book's structure</h2>
+  <p>When you mark a source as a book, AnkiGPT detects chapters and sections before generating concepts. The book becomes a subcategory under your chosen course or subject.</p>
+  <ol>
+    <li>Read the detected chapter and section titles.</li>
+    <li>Select the portions you want and correct the structure where needed.</li>
+    <li>Choose chapter-level or section-level decks, then continue extraction.</li>
+  </ol>
+  <figure><a class="shot" href="images/17-book-structure.png" aria-label="Enlarge book structure review">
+    <img src="images/17-book-structure.png" alt="Detected book chapter and section tree for review before extraction.">
+    <span class="mark" style="--x:4%;--y:25%;--w:91%;--h:58%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Check the detected outline before creating chapter or section decks.</figcaption></figure>
+  <p>If the outline is poor, try a clearer source with selectable text and explicit headings, or start with a single chapter.</p>
+</section>
+<section id="preview">
+  <span class="number">05 / REVIEW BEFORE SAVING</span><h2>Check the proposed concepts</h2>
+  <p>Extraction can take time for a long document. Follow the progress messages until the review table appears. Generation is a proposal: you decide what becomes study material.</p>
+  <ol>
+    <li>Read the proposed titles, summaries, key points, and destination decks.</li>
+    <li>Edit unclear or incorrect text and deselect unwanted concepts.</li>
+    <li>Use the create button to save the selected concepts to your collection.</li>
+  </ol>
+  <figure><a class="shot" href="images/04-preview.png" aria-label="Enlarge generated concept preview">
+    <img src="images/04-preview.png" alt="Generated concepts in an editable review table.">
+    <span class="mark" style="--x:3%;--y:16%;--w:94%;--h:70%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Review the rows and keep only useful, source-supported concepts.</figcaption></figure>
+  <p>After saving, use <strong>Concepts</strong> to refine the material. AI output can contain mistakes; check it against your source.</p>
+</section>
+<section id="study">
+  <span class="number">06 / STUDY</span><h2>Choose a deck and question types</h2>
+  <ol>
+    <li>Choose <strong>Study</strong> in the sidebar. Expand the course hierarchy and click the category, subcategory, or deck you want.</li>
+    <li>Check the <strong>Selected</strong> label. Choose <strong>Open</strong> to see course information, <strong>Study</strong> to answer questions, or <strong>Edit</strong> to change its material.</li>
+    <li>For Study, enable the question formats you want: <strong>Questions</strong> (typed answers), <strong>Multiple-choice</strong>, <strong>True or False</strong>, and <strong>Fill in the blank</strong>. You can mix formats.</li>
+    <li>Click <strong>GO</strong> to perform the selected action. Selecting a row alone does not start a session.</li>
+  </ol>
+  <figure><a class="shot" href="images/01-deck-list.png" aria-label="Enlarge deck selection and study modes">
+    <img src="images/01-deck-list.png" alt="Study Hub with deck selection, action choices, question types, and GO button highlighted.">
+    <span class="mark" style="--x:23%;--y:68%;--w:72%;--h:7%"><b>1</b></span>
+    <span class="mark" style="--x:23%;--y:52%;--w:72%;--h:11%"><b>2</b></span>
+  </a><figcaption><strong>1</strong> Select a deck. <strong>2</strong> Choose an action and study formats, then GO.</figcaption></figure>
+  <p><strong>New</strong>, <strong>Learning</strong>, and <strong>Review</strong> counts describe your queues. If nothing is due, try another deck or return when reviews are scheduled.</p>
+</section>
+<section id="answer">
+  <span class="number">07 / ANSWER &amp; FEEDBACK</span><h2>Answer, read the feedback, and continue</h2>
+  <ol>
+    <li>Read the question and answer from memory. For a typed answer, enter your explanation and click <strong>Check Answer</strong>. The screen also shows the applicable keyboard shortcut.</li>
+    <li>For choice-based formats, select an answer and follow the on-screen action. For self-graded cards, reveal the answer before rating yourself.</li>
+    <li>Read the feedback, missing points, and model answer. Scroll down to see additional explanation or source references.</li>
+    <li>Choose <strong>Hard</strong>, <strong>Good</strong>, or <strong>Easy</strong> to rate your recall. The star marks the suggested rating. <strong>Next Question</strong> uses the repeat/Again rating rather than accepting the suggestion automatically.</li>
+  </ol>
+  <figure><a class="shot" href="images/06-review-typed.png" aria-label="Enlarge the typed-answer screen">
+    <img src="images/06-review-typed.png" alt="Typed response field and Check Answer button in the reviewer.">
+    <span class="mark" style="--x:20%;--y:37%;--w:60%;--h:20%"><b>1</b></span>
+    <span class="mark" style="--x:41%;--y:62%;--w:18%;--h:7%"><b>2</b></span>
+  </a><figcaption><strong>1</strong> Write your answer. <strong>2</strong> Request feedback.</figcaption></figure>
+  <figure><a class="shot" href="images/07-review-graded.png" aria-label="Enlarge feedback and rating controls">
+    <img src="images/07-review-graded.png" alt="Feedback, suggested grade, and Next Question and difficulty buttons.">
+    <span class="mark" style="--x:17%;--y:30%;--w:65%;--h:5%"><b>3</b></span>
+    <span class="mark" style="--x:17%;--y:66%;--w:65%;--h:27%"><b>4</b></span>
+  </a><figcaption><strong>3</strong> Continue or choose your rating. <strong>4</strong> Review what was correct and what was missing.</figcaption></figure>
+  <p>Ratings affect future scheduling. Treat AI feedback as assistance; use the source material to resolve disagreements.</p>
+</section>
+<section id="concepts">
+  <span class="number">08 / EDIT</span><h2>Improve concepts and ordinary cards</h2>
+  <ol>
+    <li>Open <strong>Concepts</strong>. Expand a deck group, or search by deck name, concept title, or description.</li>
+    <li>Open a concept and edit its title, description, and key points. Put each key point on its own line.</li>
+    <li>Scroll down and click <strong>Save changes</strong>. Use Cancel or the back link to leave without saving the form.</li>
+  </ol>
+  <figure><a class="shot" href="images/12-concept-editor.png" aria-label="Enlarge concept editing fields">
+    <img src="images/12-concept-editor.png" alt="Concept editor with title, description, and key-point fields.">
+    <span class="mark" style="--x:24%;--y:37%;--w:63%;--h:52%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Edit the material used to generate future questions.</figcaption></figure>
+  <p><strong>Card Library</strong> lets you browse and edit ordinary note fields or add a card. Its search applies to the newest 500 notes currently loaded, and a note with several cards is listed once. Use the course's concept editor when you want to change the source concept for AI questions.</p>
+</section>
+<section id="ai-help">
+  <span class="number">09 / ASK AI</span><h2>Ask for an explanation or improvement</h2>
+  <ol>
+    <li>During study, click <strong>Ask AI</strong>. When editing a concept, use its AI improvement control.</li>
+    <li>Choose a suggested prompt or type your own question. Be specific: “Explain why this answer is wrong” is more useful than “Help.”</li>
+    <li>Send the question and read the response and source references. In edit mode, review the proposed changes before applying them, then save the concept.</li>
+  </ol>
+  <figure><a class="shot" href="images/26-ask-ai.png" aria-label="Enlarge the Ask AI dialog">
+    <img src="images/26-ask-ai.png" alt="Ask AI dialog showing suggested prompts and the question box.">
+    <span class="mark" style="--x:2%;--y:7%;--w:96%;--h:30%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Choose an explanation prompt or enter your own question.</figcaption></figure>
+  <p>Ask AI uses the current concept and available source context. If an answer is unclear, ask a follow-up with the exact point you want explained.</p>
+</section>
+<section id="visuals">
+  <span class="number">10 / VISUAL AIDS</span><h2>Attach or generate an illustration</h2>
+  <ol>
+    <li>Open a concept and scroll to its visual controls.</li>
+    <li>Attach an existing image, or choose the generation control to request an instructional visual.</li>
+    <li>For a generated visual, review the preview, rationale, and image description before accepting it. Regenerate if needed.</li>
+    <li>Check the visual description and placement, then save the concept. Use the remove control if the visual does not help.</li>
+  </ol>
+  <figure><a class="shot" href="images/24-concept-tools.png" aria-label="Enlarge concept visual and save controls">
+    <img src="images/24-concept-tools.png" alt="Lower concept editor showing AI help, visual attachment and generation, and Save changes.">
+    <span class="mark" style="--x:24%;--y:28%;--w:64%;--h:57%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Add a visual, describe it, and save your changes.</figcaption></figure>
+  <p>A good visual clarifies one relationship or process. Check labels and factual details just as you would check a generated explanation.</p>
+</section>
+<section id="focus">
+  <span class="number">11 / FOCUS</span><h2>Study in a small, focused session</h2>
+  <ol>
+    <li>On the Study screen, enable <strong>Focus session</strong>.</li>
+    <li>Choose a card goal and an optional <strong>Quiet timer</strong>. Select Untimed if you prefer a card goal alone.</li>
+    <li>Select a deck and click <strong>GO</strong>. Follow the progress indicator while answering.</li>
+    <li>Use <strong>Take a break</strong> to pause. Resume when ready; break time does not count toward the timer.</li>
+  </ol>
+  <figure><a class="shot" href="images/19-focus-session.png" aria-label="Enlarge focus-session controls">
+    <img src="images/19-focus-session.png" alt="Study screen with focus-session options for card goal and timer.">
+    <span class="mark" style="--x:23%;--y:57%;--w:72%;--h:19%"><b>1</b></span>
+  </a><figcaption><strong>1</strong> Enable a focus session and choose a card goal and optional timer before starting.</figcaption></figure>
+  <p>The session ends after rating a card once the goal or time limit is reached, or when you leave early or run out of cards. A recap shows your progress. Sessions do not resume after closing the app.</p>
+</section>
+<section id="audio">
+  <span class="number">12 / AUDIO</span><h2>Play background sound</h2>
+  <ol>
+    <li>In the Study focus options, open <strong>Background sounds</strong>.</li>
+    <li>Select white, pink, or brown noise, or choose a local audio file. Click <strong>Play</strong>.</li>
+    <li>Adjust volume or mute. Optionally enable <strong>Start this sound with focus sessions</strong>.</li>
+    <li>Click <strong>Done</strong> to hide the controls. Use Stop when you want playback to end.</li>
+  </ol>
+  <figure><a class="shot" href="images/20-background-audio.png" aria-label="Enlarge background sound controls">
+    <img src="images/20-background-audio.png" alt="Audio source, Play, Stop, volume, mute, and automatic focus-session playback controls.">
+    <span class="mark" style="--x:1%;--y:7%;--w:98%;--h:51%"><b>1</b></span>
+    <span class="mark" style="--x:1%;--y:70%;--w:98%;--h:14%"><b>2</b></span>
+  </a><figcaption><strong>1</strong> Control local background sound. <strong>2</strong> Open a myNoise website separately.</figcaption></figure>
+  <p>Local audio pauses during focus breaks and stops when you leave the reviewer. myNoise links open websites: their own playback controls apply, and AnkiGPT's local volume and session controls do not control those sites.</p>
+</section>
+<section id="browser">
+  <span class="number">13 / BROWSER</span><h2>Open this guide and other bookmarks</h2>
+  <ol>
+    <li>Choose <strong>Web browser</strong> in the sidebar or reviewer.</li>
+    <li>The first time you open the browser in a profile session, this guide opens automatically. If you opened a specific website link, that website opens instead. Selecting a bookmark loads it immediately. To return to the guide, select <strong>AnkiGPT How To</strong>. You can also use <strong>Open bookmark</strong> to reopen the selected bookmark.</li>
+    <li>For a website, type its address and press Enter, or choose <strong>myNoise</strong>, <strong>How to Study</strong>, or <strong>Khan Academy</strong> from the bookmark list.</li>
+    <li>Use <strong>Bookmark page</strong> to save a website, <strong>+ New browser tab</strong> for another page, and <strong>Study</strong> to return to learning.</li>
+  </ol>
+  <figure><a class="shot" href="images/21-browser.png" aria-label="Enlarge browser bookmark controls">
+    <img src="images/21-browser.png" alt="Built-in browser showing the AnkiGPT How To bookmark and Open bookmark button.">
+    <span class="mark" style="--x:.5%;--y:8%;--w:62%;--h:3.5%"><b>1</b></span>
+    <span class="mark edge" style="--x:37%;--y:.3%;--w:13%;--h:3.5%"><b>2</b></span>
+  </a><figcaption><strong>1</strong> Select and open the guide. <strong>2</strong> Switch between Study and browser tabs.</figcaption></figure>
+  <p>The four built-in bookmarks cannot be deleted; <strong>Remove bookmark</strong> is disabled when one is selected. To delete a bookmark you added, select it, click <strong>Remove bookmark</strong>, and confirm with <strong>Yes</strong>. Choosing No keeps it.</p>
+  <p>Automatic pop-up windows and tabs are blocked. Links opened through a click or keyboard action can still open a new tab. Built-in ad filtering also blocks known ad services and hides common in-page banners and ad overlays. Some ads may still appear; cookie notices and ordinary dialogs remain available. If a website does not work properly, check <strong>Allow ads on this site</strong> in the browser toolbar. Its open tabs reload, and the choice is remembered for that hostname. Uncheck it to restore filtering.</p>
+  <p>Bookmarks are saved with your profile. Website sign-ins and cookies are temporary. Browser audio may continue in Study; use <strong>Mute tab</strong> or close that tab to stop it. Opening a browser tab pauses an active focus session; returning resumes it only if the browser caused the pause.</p>
+  <p>You can click any screenshot in this guide to view the original at full size, then use the browser's Back button to return. The numbered highlights stay on the guide page.</p>
+</section>
+<section id="backups">
+  <span class="number">14 / YOUR DATA</span><h2>Back up, upgrade, or move to another computer</h2>
+  <p>On Windows, the default data folder is <code>%APPDATA%\Anki2</code>, normally <code>C:\Users\&lt;Windows user&gt;\AppData\Roaming\Anki2</code>. AnkiGPT creates it on first launch if it is missing and reuses it if it already exists. Original Anki and AnkiGPT share this location by default.</p>
+  <figure><a class="shot" href="images/23-backups.png" aria-label="Enlarge Data and synchronization controls">
+    <img src="images/23-backups.png" alt="Data and synchronization screen with Create backup and import/export controls.">
+    <span class="mark" style="--x:59%;--y:30%;--w:35%;--h:10%"><b>1</b></span>
+    <span class="mark" style="--x:23%;--y:51%;--w:71%;--h:21%"><b>2</b></span>
+  </a><figcaption><strong>1</strong> Create a collection recovery point. <strong>2</strong> Import or export a collection package.</figcaption></figure>
+  <table><thead><tr><th>Inside each profile folder</th><th>What it contains</th></tr></thead><tbody>
+    <tr><td><code>collection.anki2</code></td><td>Decks, notes, cards, and scheduling</td></tr>
+    <tr><td><code>collection.media</code></td><td>Images, audio, and other card media</td></tr>
+    <tr><td><code>ankigpt.sqlite</code></td><td>Additional AnkiGPT source and study data</td></tr>
+    <tr><td><code>backups</code></td><td>Collection recovery backups</td></tr>
+  </tbody></table>
+  <h3>Make a complete copy</h3>
+  <ol>
+    <li>Close AnkiGPT and Anki.</li>
+    <li>Open <code>%APPDATA%\Anki2</code> in File Explorer.</li>
+    <li>Copy the entire folder to your backup destination. A profile such as <code>User 1</code> must include its database, media, and AnkiGPT sidecar file.</li>
+    <li>When moving computers, install and close the app on the new computer, preserve any data already there, then copy the saved data into that user's equivalent location.</li>
+  </ol>
+  <p class="note">Create backup and ordinary Anki synchronization are not a substitute for a complete AnkiGPT folder copy. Do not assume they preserve the separate <code>ankigpt.sqlite</code> database. Re-enter provider credentials if needed on a new machine. If you used a custom data directory, back up that directory instead.</p>
+  <p>Installing an app update normally preserves this data folder. Do not delete it to upgrade the application.</p>
+</section>
+<section id="troubleshooting">
+  <span class="number">15 / TROUBLESHOOTING</span><h2>When something does not work</h2>
+  <details><summary>AI connection fails</summary><p>Check the provider, API key, model, and base URL in <a href="#setup">Settings</a>. Save changes and test again. Read the reported error: an unavailable model, rejected credential, or provider usage limit needs a different fix from a network timeout.</p></details>
+  <details><summary>A source produces no useful concepts</summary><p>Check that the file contains readable text. Try a shorter document, clearer topic guidance, or fewer exclusions. A scanned PDF may need text recognition before import. For a website requiring sign-in, use a readable local document you are permitted to use.</p></details>
+  <details><summary>Clicking a deck does not start studying</summary><p>Confirm the Selected label, choose Study, enable a question format, and click GO. If the queue is empty, choose another deck or return when reviews are due.</p></details>
+  <details><summary>A button shown in this guide is missing</summary><p>Scroll down inside the page or dialog, or enlarge the window. Some settings and visual controls appear below the first screen. An older app version may have a different layout.</p></details>
+  <details><summary>There is sound after returning to Study</summary><p>Check browser tabs for website playback. Mute the tab or stop playback on the site. Local background-audio volume does not control website audio.</p></details>
+  <details><summary>Where are my decks after reinstalling?</summary><p>Open the same profile and check the data folder described in <a href="#backups">Backups</a>. A different Windows user or custom startup directory opens a different collection. Avoid replacing a populated data folder until you have copied it somewhere safe.</p></details>
+  <p><a href="#start">Return to the beginning ↑</a></p>
+</section>
+</main>
+</div>
+<footer>AnkiGPT How To · Included with the application · No external fonts, scripts, or images required.</footer>
+</body>
+</html>

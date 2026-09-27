@@ -11,7 +11,7 @@ This repository is maintained at
 from [`superj6/ankigpt`](https://github.com/superj6/ankigpt) and
 [`ankitects/anki`](https://github.com/ankitects/anki).
 
-Current source version: **26.08.2** (see [`.version`](.version)).
+Current source version: **26.08.3** (see [`.version`](.version)).
 Available installer versions are listed on the Releases page.
 
 ## What it does
@@ -96,6 +96,10 @@ Anki features can operate locally without an AI connection.
 
 ## First-time setup
 
+For illustrated step-by-step instructions, choose **Web browser → AnkiGPT How To
+→ Open bookmark** in the app. The guide works offline and includes highlighted
+screenshots. Its source is [the bundled HTML guide](qt/aqt/ankigpt/help/index.html).
+
 1. Start AnkiGPT and open **Settings**.
 2. Select OpenAI or another OpenAI-compatible provider.
 3. Enter the API key, model, base URL, and timeout, then test the connection.
@@ -164,7 +168,7 @@ The [AnkiGPT Windows MSI workflow](.github/workflows/ankigpt-windows-msi.yml)
 builds a self-contained Windows x64 installer.
 
 - Run **Actions → AnkiGPT Windows MSI → Run workflow** for a test artifact.
-- Push a tag such as `ankigpt-v26.08.2` to build an MSI and publish a GitHub
+- Push a tag such as `ankigpt-v26.08.3` to build an MSI and publish a GitHub
   Release automatically.
 - Locally generated installers are written to `out/installer/dist/`.
 - The repository's `release/` directory can hold local copies; its artifacts
