@@ -26,38 +26,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "LATEST_MSI="
-for /f "delims=" %%F in ('dir /b /a-d /o-d "release\*.msi" 2^>nul') do if not defined LATEST_MSI set "LATEST_MSI=%CD%\release\%%F"
-
-if not defined LATEST_MSI (
-    echo Error: No MSI was found in release.
+if not exist ".version" (
+    echo Error: .version was not found.
+    exit /b 1
+)
+set /p ANKIGPT_RELEASE_VERSION=<.version
+set "LATEST_MSI=%CD%\release\anki-!ANKIGPT_RELEASE_VERSION!-win-x64.msi"
+set "RELEASE_TAG=ankigpt-v!ANKIGPT_RELEASE_VERSION!"
+if not exist "!LATEST_MSI!" (
+    echo Error: No installer matching .version was found: !LATEST_MSI!
     echo Run build-windows-installer.bat upload=0 first.
     exit /b 1
 )
-
-set "RELEASE_TAG="
 for %%F in ("%LATEST_MSI%") do echo Selected MSI: %%~nxF ^(%%~zF bytes^)
-echo Checking the latest release in %GITHUB_REPOSITORY%...
-for /f "delims=" %%T in ('gh release view --repo "%GITHUB_REPOSITORY%" --json tagName --jq ".tagName" 2^>nul') do set "RELEASE_TAG=%%T"
-
-if not defined RELEASE_TAG (
-    if not exist ".version" (
-        echo Error: No GitHub release exists and .version was not found.
-        exit /b 1
-    )
-    set /p ANKIGPT_RELEASE_VERSION=<.version
-    if not defined ANKIGPT_RELEASE_VERSION (
-        echo Error: .version is empty.
-        exit /b 1
-    )
-    set "RELEASE_TAG=v!ANKIGPT_RELEASE_VERSION!"
-    echo No existing release found. Creating !RELEASE_TAG! in %GITHUB_REPOSITORY%...
-    gh release create "!RELEASE_TAG!" --repo "%GITHUB_REPOSITORY%" --title "AnkiGPT !ANKIGPT_RELEASE_VERSION!" --generate-notes
-    if errorlevel 1 (
-        echo Error: GitHub release creation failed.
-        exit /b 1
-    )
-)
 
 echo Uploading %LATEST_MSI% to release %RELEASE_TAG% in %GITHUB_REPOSITORY%...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0upload-release-asset.ps1"

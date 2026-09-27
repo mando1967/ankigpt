@@ -180,6 +180,10 @@ builds a self-contained Windows x64 installer.
 - Run `build-windows-installer.bat upload=0` locally to build an MSI and move it
   from `out/installer/dist/` to `release/`. Use `upload=1` to also upload it to
   GitHub.
+- Local uploads select `anki-<version>-win-x64.msi` using `.version` and target
+  `ankigpt-v<version>`, rather than adding files to an older release. Push the
+  source commit first; missing releases are created with that commit and the
+  matching changelog section.
 - The repository's `release/` directory can hold local copies; its artifacts
   are ignored by Git.
 

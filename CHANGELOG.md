@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Aligned CI and local MSI asset names so uploading the same version replaces its asset instead of creating a second differently named installer.
+- Fixed local MSI uploads attaching new versions to an older release. The uploader now selects the installer matching `.version`, uses its own `ankigpt-v` release tag, and creates missing releases with version-specific changelog notes and a pushed source commit.
+
 ## 26.08.3
 
 - Added a bundled beginner-friendly How To guide with annotated screenshots, accessible from a built-in bookmark and shown when the browser first opens in a profile session.

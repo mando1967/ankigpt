@@ -1,9 +1,31 @@
 # Called by upload-latest-msi.bat with the selected file, repository, and tag.
 $ErrorActionPreference = 'Stop'
 $responsePath = $null
+$notesPath = $null
 
 try {
     $file = Get-Item -LiteralPath $env:LATEST_MSI
+    $version = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '.version') -Raw).Trim()
+    if ($version -notmatch '^\d+\.\d+\.\d+$' -or
+        $env:RELEASE_TAG -cne "ankigpt-v$version" -or
+        $file.Name -cne "anki-$version-win-x64.msi") {
+        throw 'Installer filename, release tag, and .version must match.'
+    }
+    & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $commit = & git -C $PSScriptRoot rev-parse HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'Could not determine the source commit.' }
+        & gh api "repos/$env:GITHUB_REPOSITORY/commits/$commit" --silent
+        if ($LASTEXITCODE -ne 0) { throw 'Push the source commit before creating its release.' }
+        $changelog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'CHANGELOG.md') -Raw
+        $section = [regex]::Match($changelog, '(?ms)^## ' + [regex]::Escape($version) + '\r?\n(.*?)(?=^## |\z)')
+        if (-not $section.Success) { throw 'No changelog section matches the installer version.' }
+        $notesPath = [IO.Path]::GetTempFileName()
+        $notes = "## $version`n`n" + $section.Groups[1].Value.Trim() + "`n`nWindows installer: $($file.Name)`n`nSource commit: $commit`n"
+        [IO.File]::WriteAllText($notesPath, $notes)
+        & gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $commit --title "AnkiGPT $version" --notes-file $notesPath
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the version-specific release.' }
+    }
     $tag = [Uri]::EscapeDataString($env:RELEASE_TAG)
     $releaseJson = & gh api --hostname github.com "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the GitHub release.' }
@@ -59,4 +81,5 @@ try {
 } finally {
     $token = $null
     if ($responsePath) { Remove-Item -LiteralPath $responsePath -Force -ErrorAction SilentlyContinue }
+    if ($notesPath) { Remove-Item -LiteralPath $notesPath -Force -ErrorAction SilentlyContinue }
 }
