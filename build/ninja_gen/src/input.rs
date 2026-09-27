@@ -130,9 +130,16 @@ fn cache_files() -> Vec<Utf8PathBuf> {
         .sort_by_file_name()
         .into_iter()
         .filter_entry(move |e| {
-            // don't walk into symlinks, or the top-level out/, or .git
+            // Prune generated Python caches before descending into them. They
+            // are not build inputs and may be owned by a different Windows user.
+            // Keep reporting errors for inaccessible source directories.
             !(e.path_is_symlink()
-                || (e.depth() == 1 && (e.file_name() == "out" || e.file_name() == ".git")))
+                || (e.depth() == 1 && (e.file_name() == "out" || e.file_name() == ".git"))
+                || (e.file_type().is_dir()
+                    && matches!(
+                        e.file_name().to_str(),
+                        Some(".pytest_cache" | "__pycache__" | ".mypy_cache" | ".ruff_cache")
+                    )))
         })
         .filter_map(move |e| {
             let path = e.as_ref().unwrap().path().strip_prefix("./").unwrap();

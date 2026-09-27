@@ -69,7 +69,20 @@ Anki's source files do not need to be in a specific location, but it's best to
 avoid long paths, as they can cause problems. Spaces in the path may cause
 problems.
 
-## More
+## Generated Python cache permissions
+
+If an older AnkiGPT checkout fails in `build/ninja_gen/src/input.rs` with
+`PermissionDenied` or `Access is denied` for `qt/.pytest_cache`, update the
+checkout and rerun the build. The source scanner now skips `.pytest_cache`,
+`__pycache__`, `.mypy_cache`, and `.ruff_cache` before entering them. These
+generated directories are not build inputs, and no deletion or permission
+changes are needed for this fix.
+
+Errors for actual source files still require investigation. A permission error
+under the BeeWare installer cache is a separate issue; this change only affects
+source-tree scanning.
+
+## Further reading
 
 For info on running tests, building wheels and so on, please see
 [Development](./development.md).

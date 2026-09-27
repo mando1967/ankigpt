@@ -66,8 +66,9 @@ Automatic pop-up windows and tabs are blocked. New tabs requested directly by
 a click or keyboard action remain available. An offline filter blocks known ad
 services and hides common in-page ad banners and overlays, including dynamically
 inserted ads. It does not cover every ad or hide cookie notices. **Allow ads on
-this site** disables both filters for the current hostname, reloads its open tabs,
-and remembers the exception in the profile. Uncheck it to restore filtering.
+this site** disables ad-request blocking and banner hiding for the current
+hostname, reloads its open tabs, and remembers the exception in the profile.
+Automatic popup blocking stays enabled. Uncheck the option to restore ad filtering.
 
 Website audio can continue when returning to Study. Switching to a browser tab
 pauses an active focus session; returning resumes it only if the browser caused
@@ -108,5 +109,6 @@ change these profile files.
 The root [`.version`](../../.version) file supplies the application build version.
 The Windows MSI workflow can override it through its version input or release
 tag. Follow the [README build instructions](../../README.md#building-from-source)
-to build locally; generated installers are placed in `out/installer/dist/`.
+to build locally. `build-windows-installer.bat upload=0` builds and packages the
+MSI, then moves it from `out/installer/dist/` to `release/`.
 A source version bump does not by itself publish a new installer.

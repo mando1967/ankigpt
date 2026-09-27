@@ -7,6 +7,7 @@
 - Made bookmark selection load the page immediately.
 - Blocked automatic popup windows while preserving user-initiated links to new tabs.
 - Added filtering for known ad services and common in-page banners and overlays, with a remembered per-site option to allow ads.
+- Fixed Windows build configuration failing on inaccessible generated Python caches such as `qt/.pytest_cache`; the source scanner now skips these directories.
 
 ## 26.08.2
 

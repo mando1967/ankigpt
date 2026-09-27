@@ -42,7 +42,11 @@ Available installer versions are listed on the Releases page.
   sections, with entry counts and full subdeck names.
 - Offers focus sessions with card goals, optional timers, breaks, and a recap.
 - Plays local background audio or generated white, pink, and brown noise.
-- Includes browser tabs with bookmarks for myNoise and How to Study.
+- Includes browser tabs with built-in bookmarks for the illustrated How To
+  guide, myNoise, How to Study, and Khan Academy. Selecting a bookmark opens it
+  immediately; built-in bookmarks are protected from deletion.
+- Blocks automatic popups and filters known ad services and common in-page
+  ad banners, with a remembered **Allow ads on this site** option.
 - Retains Anki scheduling, profiles, synchronization, backup, import, export,
   database checks, and media management.
 
@@ -96,9 +100,12 @@ Anki features can operate locally without an AI connection.
 
 ## First-time setup
 
-For illustrated step-by-step instructions, choose **Web browser → AnkiGPT How To
-→ Open bookmark** in the app. The guide works offline and includes highlighted
-screenshots. Its source is [the bundled HTML guide](qt/aqt/ankigpt/help/index.html).
+For illustrated step-by-step instructions, choose **Web browser** in the app.
+The How To guide opens automatically on the first browser opening in each profile
+session, unless you requested a specific website. To return to it, select
+**AnkiGPT How To** from the bookmarks; it loads immediately. The guide works
+offline and includes highlighted screenshots. Its source is
+[the bundled HTML guide](qt/aqt/ankigpt/help/index.html).
 
 1. Start AnkiGPT and open **Settings**.
 2. Select OpenAI or another OpenAI-compatible provider.
@@ -170,12 +177,19 @@ builds a self-contained Windows x64 installer.
 - Run **Actions → AnkiGPT Windows MSI → Run workflow** for a test artifact.
 - Push a tag such as `ankigpt-v26.08.3` to build an MSI and publish a GitHub
   Release automatically.
-- Locally generated installers are written to `out/installer/dist/`.
+- Run `build-windows-installer.bat upload=0` locally to build an MSI and move it
+  from `out/installer/dist/` to `release/`. Use `upload=1` to also upload it to
+  GitHub.
 - The repository's `release/` directory can hold local copies; its artifacts
   are ignored by Git.
 
 Do not commit MSI binaries to the repository. Publish them as GitHub Release
 assets so they remain outside Git history.
+
+The build scanner skips generated Python caches, including `.pytest_cache`,
+so an inaccessible cache does not prevent configuration. See
+[Windows troubleshooting](docs/windows.md#generated-python-cache-permissions)
+if an older checkout fails with this error.
 
 ## Testing
 
