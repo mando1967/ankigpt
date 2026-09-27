@@ -19,4 +19,4 @@
 - Added curl upload progress, transfer speed, connection timings, and confirmation of the uploaded asset size.
 - Updated regression tests, screenshots, the Study Hub guide, profile storage/backup guidance, and Windows test-environment documentation.
 
-The release source archives include the current source fixes and upload tooling. The previously uploaded Windows MSI is retained; it has not been rebuilt as part of this source update.
+The Windows MSI includes the latest application updates. The release source archives include the current application source, fixes, and upload tooling.
