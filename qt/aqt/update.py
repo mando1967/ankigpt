@@ -90,8 +90,12 @@ def prompt_to_update(mw: aqt.AnkiQt, ver: str) -> None:
         openLink(aqt.appWebsiteDownloadSection)
 
 
+def ankigpt_release_version(tag: str) -> Version:
+    return Version(tag.removeprefix("ankigpt-").removeprefix("v"))
+
+
 def prompt_and_install_github_update(mw: aqt.AnkiQt, release: GithubRelease) -> None:
-    msg = f"AnkiGPT {release.tag_name.removeprefix('v')} has been released.\n\n"
+    msg = f"AnkiGPT {ankigpt_release_version(release.tag_name)} has been released.\n\n"
     msg += "Would you like to download and install it now?"
 
     msgbox = QMessageBox(mw)
@@ -115,10 +119,10 @@ def prompt_and_install_github_update(mw: aqt.AnkiQt, release: GithubRelease) -> 
 
 def check_for_ankigpt_update(mw: aqt.AnkiQt, *, manual: bool) -> None:
     """Check AnkiGPT's release feed, never the upstream Anki update service."""
-    installed = Version(version_str.removeprefix("v"))
+    installed = ankigpt_release_version(version_str)
 
     def on_success(release: GithubRelease) -> None:
-        available = Version(release.tag_name.removeprefix("v"))
+        available = ankigpt_release_version(release.tag_name)
         suppressed = mw.pm.meta.get("suppressAnkiGPTUpdate")
         if available > installed and (manual or suppressed != release.tag_name):
             prompt_and_install_github_update(mw, release)

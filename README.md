@@ -98,6 +98,12 @@ from this repository's Releases page before running it.
 AI features require a supported provider account and API credential. Core
 Anki features can operate locally without an AI connection.
 
+The published 26.08.2 and 26.08.3 builds check the original fork's update feed
+and may not discover releases here. Download and run the MSI from this
+repository's Releases page manually. The updater correction is listed under
+**Unreleased** in [the changelog](CHANGELOG.md); it requires a newly built MSI
+before installed copies can use it.
+
 ## First-time setup
 
 For illustrated step-by-step instructions, choose **Web browser** in the app.
