@@ -250,4 +250,8 @@ def test_extract_prompt_includes_outline_and_sampling_note() -> None:
     _system, user = prompts.build_extract_prompt("chunk", "", 5, "a.pdf")
     assert "OUTLINE" not in user and "excerpts" not in user
     assert "hard relevance constraints" in _system
-    assert "instead of guessing" in _system
+    assert (
+        "Every factual statement must be explicitly supported by legible supplied text"
+        in _system
+    )
+    assert "skip it rather than answering from memory" in _system

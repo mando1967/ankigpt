@@ -129,7 +129,7 @@ def run() -> None:
     empty_deck_id = col.decks.id("Empty Smoke")
     mw.web._onBridgeCmd(f"ankigpt:study:{int(empty_deck_id)}")
     pump(lambda: mw.state == "deckBrowser", "empty course return to shell")
-    assert mw.state != "overview"
+    assert str(mw.state) == "deckBrowser"
     step("empty study session returned to shell without Overview")
 
     deck_id = deck_id_for_name(col, "Smoke")

@@ -151,8 +151,7 @@ class SourceViewerDialog(QDialog):
         self.open_btn.setEnabled(
             bool(doc.path)
             and (
-                doc.path.startswith(("http://", "https://"))
-                or os.path.exists(doc.path)
+                doc.path.startswith(("http://", "https://")) or os.path.exists(doc.path)
             )
         )
         self.next_btn.setVisible(bool(highlights))

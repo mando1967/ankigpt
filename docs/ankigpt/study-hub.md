@@ -1,4 +1,4 @@
-﻿# Study Hub guide
+# Study Hub guide
 
 This guide describes the features in source version 26.08.2. Installing an
 older release may show a different interface.
@@ -77,12 +77,12 @@ For example, the default `User 1` profile is under
 A custom base directory supplied when launching the application changes this
 location.
 
-| File or folder | Contents |
-| --- | --- |
-| `collection.anki2` | Decks, notes, cards, and scheduling data |
-| `collection.media/` | Card images, audio, and other media |
-| `ankigpt.sqlite` | Additional AnkiGPT source and study data |
-| `backups/` | Anki collection backups |
+| File or folder      | Contents                                 |
+| ------------------- | ---------------------------------------- |
+| `collection.anki2`  | Decks, notes, cards, and scheduling data |
+| `collection.media/` | Card images, audio, and other media      |
+| `ankigpt.sqlite`    | Additional AnkiGPT source and study data |
+| `backups/`          | Anki collection backups                  |
 
 Close AnkiGPT before copying an entire profile folder for a manual backup.
 Automatic collection backups are not a complete copy of the profile's media

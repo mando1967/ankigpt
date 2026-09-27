@@ -1,3 +1,4 @@
+# Copyright: Ankitects Pty Ltd and contributors
 from __future__ import annotations
 
 import os

@@ -55,24 +55,24 @@ for current navigation, focus, audio, and browser behavior.
 
 ![Current AnkiGPT Study Hub](docs/ankigpt/screenshots/01-deck-list.png)
 
-| Browse the concept library | Refine a concept in the Study Hub |
-| --- | --- |
+| Browse the concept library                                                            | Refine a concept in the Study Hub                                                    |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | ![Browse concepts in the current Study Hub](docs/ankigpt/screenshots/14-concepts.png) | ![Edit a concept and its visual aid](docs/ankigpt/screenshots/12-concept-editor.png) |
 
-| Configure course generation | Review detected book structure |
-| --- | --- |
+| Configure course generation                                                    | Review detected book structure                                                           |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | ![Configure an AI concept course](docs/ankigpt/screenshots/02-create-deck.png) | ![Review detected chapters and sections](docs/ankigpt/screenshots/17-book-structure.png) |
 
-| Monitor extraction progress | Review concepts before creating decks |
-| --- | --- |
+| Monitor extraction progress                                               | Review concepts before creating decks                                                    |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | ![Monitor concept extraction](docs/ankigpt/screenshots/03-extracting.png) | ![Review AI-proposed concepts and destinations](docs/ankigpt/screenshots/04-preview.png) |
 
-| Open a course and choose the next action | Configure AI securely in Settings |
-| --- | --- |
+| Open a course and choose the next action                       | Configure AI securely in Settings                                     |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- |
 | ![Current course page](docs/ankigpt/screenshots/15-course.png) | ![Current AnkiGPT settings](docs/ankigpt/screenshots/16-settings.png) |
 
-| Study with an AI-generated question | Receive feedback and a suggested rating |
-| --- | --- |
+| Study with an AI-generated question                                                | Receive feedback and a suggested rating                                      |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | ![Answer a generated study question](docs/ankigpt/screenshots/06-review-typed.png) | ![Review an AI-graded answer](docs/ankigpt/screenshots/07-review-graded.png) |
 
 Licensing, upstream credits, privacy guidance, version information, and

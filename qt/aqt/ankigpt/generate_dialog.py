@@ -9,6 +9,7 @@ import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING
 
 from anki.collection import Collection, OpChanges
@@ -604,7 +605,7 @@ class CreateConceptDeckDialog(QDialog):
 
     def _set_active_book_unit(self, path: list[str], current: int, total: int) -> None:
         self._active_unit_status = tr.ankigpt_book_active_unit(
-            name=" › ".join(path), current=current, total=total
+            name=" › ".join(path), current=str(current), total=total
         )
         self._active_unit_current = current
         self._active_unit_total = total
@@ -622,7 +623,7 @@ class CreateConceptDeckDialog(QDialog):
         self._set_active_book_unit(path, current, total)
         self._log(
             tr.ankigpt_book_extracting_unit(
-                name=deck_name, current=current, total=total
+                name=deck_name, current=str(current), total=total
             )
         )
 
@@ -699,7 +700,7 @@ class CreateConceptDeckDialog(QDialog):
         if skipped or discovered.missing:
             tooltip(
                 tr.ankigpt_sources_skipped(
-                    unsupported=skipped, missing=len(discovered.missing)
+                    unsupported=str(skipped), missing=str(len(discovered.missing))
                 ),
                 parent=self,
             )
@@ -1065,10 +1066,11 @@ class CreateConceptDeckDialog(QDialog):
                 zip(docs, destinations, strict=True), start=1
             ):
                 mw.taskman.run_on_main(
-                    lambda name=doc.name, i=index: self._log(
+                    partial(
+                        self._log,
                         tr.ankigpt_document_extracting_unit(
-                            name=name, current=i, total=len(files)
-                        )
+                            name=doc.name, current=str(index), total=len(files)
+                        ),
                     )
                 )
                 candidates = extract.extract_concepts(
@@ -1170,9 +1172,7 @@ class CreateConceptDeckDialog(QDialog):
                     path=source.path,
                 )
                 mw.taskman.run_on_main(
-                    lambda unit_path=path,
-                    name=deck_name,
-                    i=index: self._begin_book_unit(unit_path, name, i, len(units))
+                    partial(self._begin_book_unit, path, deck_name, index, len(units))
                 )
                 candidates = extract.extract_concepts(
                     [unit_doc],
@@ -1185,8 +1185,8 @@ class CreateConceptDeckDialog(QDialog):
                 )
                 if not candidates:
                     mw.taskman.run_on_main(
-                        lambda name=deck_name: self._log(
-                            tr.ankigpt_book_retrying_unit(name=name)
+                        partial(
+                            self._log, tr.ankigpt_book_retrying_unit(name=deck_name)
                         )
                     )
                     retry_instructions = (
@@ -1398,11 +1398,11 @@ class CreateConceptDeckDialog(QDialog):
                         self._store_documents(destination, [document])
                 message = (
                     tr.ankigpt_created_document_decks(
-                        count=len(grouped), concepts=len(selected_with_decks)
+                        count=len(grouped), concepts=str(len(selected_with_decks))
                     )
                     if self._separate_documents
                     else tr.ankigpt_created_book_decks(
-                        count=len(grouped), concepts=len(selected_with_decks)
+                        count=len(grouped), concepts=str(len(selected_with_decks))
                     )
                 )
                 tooltip(message, parent=mw)

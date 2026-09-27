@@ -20,6 +20,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where curl.exe >nul 2>nul
+if errorlevel 1 (
+    echo Error: curl.exe is not installed or is not on PATH.
+    exit /b 1
+)
+
 set "LATEST_MSI="
 for /f "delims=" %%F in ('dir /b /a-d /o-d "release\*.msi" 2^>nul') do if not defined LATEST_MSI set "LATEST_MSI=%CD%\release\%%F"
 
@@ -30,6 +36,8 @@ if not defined LATEST_MSI (
 )
 
 set "RELEASE_TAG="
+for %%F in ("%LATEST_MSI%") do echo Selected MSI: %%~nxF ^(%%~zF bytes^)
+echo Checking the latest release in %GITHUB_REPOSITORY%...
 for /f "delims=" %%T in ('gh release view --repo "%GITHUB_REPOSITORY%" --json tagName --jq ".tagName" 2^>nul') do set "RELEASE_TAG=%%T"
 
 if not defined RELEASE_TAG (
@@ -44,11 +52,15 @@ if not defined RELEASE_TAG (
     )
     set "RELEASE_TAG=v!ANKIGPT_RELEASE_VERSION!"
     echo No existing release found. Creating !RELEASE_TAG! in %GITHUB_REPOSITORY%...
-    gh release create "!RELEASE_TAG!" "%LATEST_MSI%" --repo "%GITHUB_REPOSITORY%" --title "AnkiGPT !ANKIGPT_RELEASE_VERSION!" --generate-notes
-) else (
-    echo Uploading %LATEST_MSI% to release %RELEASE_TAG% in %GITHUB_REPOSITORY%...
-    gh release upload "%RELEASE_TAG%" "%LATEST_MSI%" --repo "%GITHUB_REPOSITORY%" --clobber
+    gh release create "!RELEASE_TAG!" --repo "%GITHUB_REPOSITORY%" --title "AnkiGPT !ANKIGPT_RELEASE_VERSION!" --generate-notes
+    if errorlevel 1 (
+        echo Error: GitHub release creation failed.
+        exit /b 1
+    )
 )
+
+echo Uploading %LATEST_MSI% to release %RELEASE_TAG% in %GITHUB_REPOSITORY%...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0upload-release-asset.ps1"
 
 if errorlevel 1 (
     echo Error: GitHub release upload failed.

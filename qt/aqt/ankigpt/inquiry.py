@@ -1,3 +1,4 @@
+# Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ class InquiryDialog(QDialog):
         self.pm = pm
         self.context = context
         self.apply_result = apply
-        self.result: prompts.InquiryResult | None = None
+        self.generated_result: prompts.InquiryResult | None = None
         self.setWindowTitle("Improve with AI" if context.mode == "edit" else "Ask AI")
         self.resize(680, 560)
         layout = QVBoxLayout(self)
@@ -48,11 +49,16 @@ class InquiryDialog(QDialog):
         presets = QHBoxLayout()
         for label, question in self._presets():
             button = QPushButton(label)
-            qconnect(button.clicked, lambda _checked=False, q=question: self.question.setPlainText(q))
+            qconnect(
+                button.clicked,
+                lambda _checked=False, q=question: self.question.setPlainText(q),
+            )
             presets.addWidget(button)
         layout.addLayout(presets)
         self.question = QPlainTextEdit()
-        self.question.setPlaceholderText("What would you like help understanding or improving?")
+        self.question.setPlaceholderText(
+            "What would you like help understanding or improving?"
+        )
         self.question.setMaximumHeight(100)
         layout.addWidget(self.question)
         self.answer = QTextBrowser()
@@ -72,8 +78,31 @@ class InquiryDialog(QDialog):
 
     def _presets(self) -> list[tuple[str, str]]:
         if self.context.mode == "edit":
-            return [("Improve clarity", "Rewrite this as a clearer, self-contained concept."), ("Find gaps", "Identify and repair important missing or vague points using only the sources."), ("Simplify", "Make this easier to understand without losing essential meaning.")]
-        return [("Explain differently", "Explain this concept in a different way."), ("Give an example", "Give a source-supported example or say if the sources do not contain one."), ("Why it matters", "Why is this concept important and how does it connect to the key points?")]
+            return [
+                (
+                    "Improve clarity",
+                    "Rewrite this as a clearer, self-contained concept.",
+                ),
+                (
+                    "Find gaps",
+                    "Identify and repair important missing or vague points using only the sources.",
+                ),
+                (
+                    "Simplify",
+                    "Make this easier to understand without losing essential meaning.",
+                ),
+            ]
+        return [
+            ("Explain differently", "Explain this concept in a different way."),
+            (
+                "Give an example",
+                "Give a source-supported example or say if the sources do not contain one.",
+            ),
+            (
+                "Why it matters",
+                "Why is this concept important and how does it connect to the key points?",
+            ),
+        ]
 
     def _ask(self) -> None:
         question = self.question.toPlainText().strip()
@@ -88,16 +117,26 @@ class InquiryDialog(QDialog):
 
         def op(_col: object) -> prompts.InquiryResult:
             system, user = prompts.build_inquiry_prompt(
-                mode=self.context.mode, question=question, title=self.context.title,
-                summary=self.context.summary, key_points=self.context.key_points,
-                context=self.context.course_context, sources=self.context.sources,
+                mode=self.context.mode,
+                question=question,
+                title=self.context.title,
+                summary=self.context.summary,
+                key_points=self.context.key_points,
+                context=self.context.course_context,
+                sources=self.context.sources,
             )
-            data = make_client(config).complete_json(system, user, "learning_inquiry", prompts.INQUIRY_SCHEMA)
+            data = make_client(config).complete_json(
+                system, user, "learning_inquiry", prompts.INQUIRY_SCHEMA
+            )
             return prompts.parse_inquiry(data)
 
         def success(result: prompts.InquiryResult) -> None:
-            self.result = result
-            refs = f"\n\nSources used: {', '.join(map(str, result.source_refs))}" if result.source_refs else ""
+            self.generated_result = result
+            refs = (
+                f"\n\nSources used: {', '.join(map(str, result.source_refs))}"
+                if result.source_refs
+                else ""
+            )
             visual = (
                 f"\n\nVisual suggestion ({result.visual_placement} side): "
                 f"{result.visual_description}"
@@ -110,12 +149,17 @@ class InquiryDialog(QDialog):
 
         def failure(exc: Exception) -> None:
             error = connection_error(exc, config.api_key)
-            self.answer.setPlainText(error.message + (f"\n\n{error.technical_details}" if error.technical_details else ""))
+            self.answer.setPlainText(
+                error.message
+                + (f"\n\n{error.technical_details}" if error.technical_details else "")
+            )
             self.ask.setEnabled(True)
 
-        QueryOp(parent=self, op=op, success=success).failure(failure).without_collection().run_in_background()
+        QueryOp(parent=self, op=op, success=success).failure(
+            failure
+        ).without_collection().run_in_background()
 
     def _apply(self) -> None:
-        if self.result is not None and self.apply_result is not None:
-            self.apply_result(self.result)
+        if self.generated_result is not None and self.apply_result is not None:
+            self.apply_result(self.generated_result)
             self.accept()

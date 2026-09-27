@@ -21,7 +21,7 @@ from aqt.ankigpt import focus
 from aqt.ankigpt.concepts import create_concept_notes, deck_id_for_name
 from aqt.ankigpt.prompts import ConceptCandidate
 from aqt.ankigpt.review import ConceptReviewController
-from aqt.ankigpt.settings import DeckSettings, save_deck_settings
+from aqt.ankigpt.settings import DeckSettings, deck_settings, save_deck_settings
 from aqt.ankigpt.store import Store
 from aqt.utils import tr
 
@@ -88,6 +88,11 @@ class Harness:
         self.runner = SyncRunner()
         self.controller = ConceptReviewController(
             self.reviewer, store_provider=lambda: store, run_async=self.runner
+        )
+        # Lifecycle tests select a format explicitly instead of relying on the
+        # default mixed-format deck settings. Selection itself is tested below.
+        self.controller._pick_mode = MagicMock(
+            side_effect=lambda card: (mode, deck_settings(col, card.current_deck_id()))
         )
 
     def show(
@@ -497,3 +502,17 @@ def test_stored_documents_feed_passages_and_lookup(
     cur2 = h.controller._current
     assert cur2 is not None and cur2.card_id == other.id
     assert cur2.passages
+
+
+@pytest.mark.parametrize("mode", ["typed", "mcq", "true_false", "fill_blank"])
+def test_mixed_deck_selects_enabled_mode(
+    harness: Callable[..., Harness], mode: str
+) -> None:
+    h = harness()
+    with patch("aqt.ankigpt.review.random.choice", return_value=mode) as choose:
+        selected, settings = ConceptReviewController._pick_mode(
+            h.controller, h.cards[0]
+        )
+    assert selected == mode
+    assert set(settings.enabled_modes()) == {"typed", "mcq", "true_false", "fill_blank"}
+    choose.assert_called_once_with(settings.enabled_modes())

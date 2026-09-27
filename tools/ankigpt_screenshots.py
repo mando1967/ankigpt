@@ -70,7 +70,10 @@ def run() -> None:
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arial.ttf",
     ):
-        if Path(font_path).exists() and QFontDatabase.addApplicationFont(font_path) >= 0:
+        if (
+            Path(font_path).exists()
+            and QFontDatabase.addApplicationFont(font_path) >= 0
+        ):
             app.setFont(QFont("Segoe UI", 10))
             break
 

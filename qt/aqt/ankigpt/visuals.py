@@ -1,3 +1,4 @@
+# Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 from __future__ import annotations
@@ -13,8 +14,59 @@ from aqt.operations import QueryOp
 from aqt.qt import *
 from aqt.utils import showWarning
 
-_TAGS = {"svg", "g", "rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text", "tspan", "marker"}
-_ATTRS = {"xmlns", "viewBox", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "width", "height", "d", "points", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "opacity", "transform", "text-anchor", "font-size", "font-weight", "font-family", "dominant-baseline", "marker-start", "marker-end", "id", "refX", "refY", "markerWidth", "markerHeight", "orient"}
+_TAGS = {
+    "svg",
+    "g",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "path",
+    "text",
+    "tspan",
+    "marker",
+}
+_ATTRS = {
+    "xmlns",
+    "viewBox",
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "width",
+    "height",
+    "d",
+    "points",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "opacity",
+    "transform",
+    "text-anchor",
+    "font-size",
+    "font-weight",
+    "font-family",
+    "dominant-baseline",
+    "marker-start",
+    "marker-end",
+    "id",
+    "refX",
+    "refY",
+    "markerWidth",
+    "markerHeight",
+    "orient",
+}
 _SAFE_VALUE = re.compile(r"^[#(),.%+\-\w\s:/]*$")
 
 
@@ -70,7 +122,7 @@ class VisualGenerationDialog(QDialog):
         self.context = context
         self.on_accepted = accepted
         self.svg: bytes | None = None
-        self.result: prompts.GeneratedVisual | None = None
+        self.generated_result: prompts.GeneratedVisual | None = None
         self.setWindowTitle("Generate instructional visual")
         self.resize(760, 700)
         layout = QVBoxLayout(self)
@@ -131,7 +183,7 @@ class VisualGenerationDialog(QDialog):
             return result, sanitize_svg(result.svg)
 
         def success(output: tuple[prompts.GeneratedVisual, bytes]) -> None:
-            self.result, self.svg = output
+            self.generated_result, self.svg = output
             pixmap = QPixmap()
             if not pixmap.loadFromData(self.svg, "SVG"):
                 raise UnsafeVisual("Qt could not render the generated SVG")
@@ -144,9 +196,9 @@ class VisualGenerationDialog(QDialog):
                 )
             )
             self.details.setText(
-                f"<b>Why this visual:</b> {self.result.rationale}<br>"
-                f"<b>Image description:</b> {self.result.alt_text}<br>"
-                f"<b>Placement:</b> {self.result.placement} side"
+                f"<b>Why this visual:</b> {self.generated_result.rationale}<br>"
+                f"<b>Image description:</b> {self.generated_result.alt_text}<br>"
+                f"<b>Placement:</b> {self.generated_result.placement} side"
             )
             self.generate.setText("Regenerate")
             self.generate.setEnabled(True)
@@ -158,13 +210,17 @@ class VisualGenerationDialog(QDialog):
             self.details.setText(error.technical_details)
             self.generate.setEnabled(True)
 
-        QueryOp(parent=self, op=op, success=success).failure(failure).without_collection().run_in_background()
+        QueryOp(parent=self, op=op, success=success).failure(
+            failure
+        ).without_collection().run_in_background()
 
     def _accept(self) -> None:
-        if self.svg is None or self.result is None:
+        if self.svg is None or self.generated_result is None:
             return
         filename = self.mw.col.media.write_data(  # type: ignore[attr-defined]
             "ankigpt-visual.svg", self.svg
         )
-        self.on_accepted(filename, self.result.alt_text, self.result.placement)
+        self.on_accepted(
+            filename, self.generated_result.alt_text, self.generated_result.placement
+        )
         self.accept()

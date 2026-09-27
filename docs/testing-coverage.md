@@ -65,3 +65,31 @@ jobs run `just test` (no coverage enforcement) for now.
   thresholds.
 - Add component or browser tests for Svelte UI surfaces if Svelte coverage
   is intended to cover rendered component behaviour.
+
+## Windows test permissions and temporary paths
+
+If pytest cannot access an old `pytest-of-<user>` directory, run checks with a
+fresh temporary root. Keep it short: installer tests create deeply nested
+paths that can exceed Windows path limits inside a long checkout directory.
+From the repository root, in PowerShell:
+
+```powershell
+$checkTemp = Join-Path $env:TEMP ('agpt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $checkTemp | Out-Null
+$env:PYTEST_DEBUG_TEMPROOT = $checkTemp
+$env:DPRINT_CACHE_DIR = Join-Path (Get-Location) 'out/dprint-cache'
+just --shell powershell --shell-arg=-NoProfile --shell-arg=-Command check
+```
+
+This uses pytest's normal numbered temporary directories without deleting or
+changing permissions on existing folders. The dprint cache is kept in the
+workspace; its first use may need internet access to download formatting
+plugins. These environment settings last for the current PowerShell session.
+
+The upstream contributor-license check is separate from code validation.
+AnkiGPT fork maintainers who are not submitting contributions to upstream Anki
+can use the existing `CONTRIBUTORS_BYPASS_EMAILS` allowlist for approved author
+emails (comma-separated). Set it before running `just check`; CI reads the
+repository variable with the same name. This affects only contributor metadata,
+not tests, linting, or type checks. Do not add a name to upstream `CONTRIBUTORS`
+merely to pass a check: that file includes an explicit licensing declaration.

@@ -27,6 +27,7 @@ from aqt.utils import tr
 
 if TYPE_CHECKING:
     from aqt.ankigpt.store import Store
+    from aqt.deckbrowser import DeckBrowser
     from aqt.main import AnkiQt
 
 STORE_FILENAME = "ankigpt.sqlite"
@@ -149,7 +150,7 @@ def badge_deck_tree(tree: str, concept_decks: set[int], label: str) -> str:
 
 def _install_deck_badges(mw: AnkiQt) -> None:
     from aqt.ankigpt.concepts import concept_deck_ids
-    from aqt.deckbrowser import DeckBrowser, DeckBrowserContent
+    from aqt.deckbrowser import DeckBrowserContent
 
     def on_render(_browser: DeckBrowser, content: DeckBrowserContent) -> None:
         try:
@@ -330,7 +331,7 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
 
 def _install_study_hub(mw: AnkiQt) -> None:
     from aqt.ankigpt.study_hub import render_study_hub
-    from aqt.deckbrowser import DeckBrowser, DeckBrowserContent
+    from aqt.deckbrowser import DeckBrowserContent
 
     def on_render(browser: DeckBrowser, content: DeckBrowserContent) -> None:
         content.tree = render_study_hub(
@@ -718,7 +719,7 @@ def _save_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
     CollectionOp(parent=mw, op=save).success(done).run_in_background()
 
 
-def _assist_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
+def _assist_concept_from_shell(mw: AnkiQt, browser: DeckBrowser, message: str) -> None:
     from aqt.ankigpt.inquiry import InquiryContext, InquiryDialog
 
     try:
@@ -760,7 +761,7 @@ def _assist_concept_from_shell(mw: AnkiQt, browser: object, message: str) -> Non
     ).exec()
 
 
-def _attach_visual_from_shell(mw: AnkiQt, browser: object) -> None:
+def _attach_visual_from_shell(mw: AnkiQt, browser: DeckBrowser) -> None:
     from aqt.utils import getFile
 
     path = getFile(
@@ -799,7 +800,7 @@ def _set_editor_visual(
     )
 
 
-def _generate_visual_from_shell(mw: AnkiQt, browser: object, message: str) -> None:
+def _generate_visual_from_shell(mw: AnkiQt, browser: DeckBrowser, message: str) -> None:
     from aqt.ankigpt.visuals import VisualGenerationDialog
 
     try:
