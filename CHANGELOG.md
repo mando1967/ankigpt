@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added a self-contained Linux x86_64 package (`anki-<version>-linux-x86_64.tar.zst`) built by a new GitHub workflow on `ankigpt-v` tags and attached to the matching release, plus `build-linux-installer.sh` for local builds.
+
 ## 26.08.4
 
 - Fixed Windows PowerShell aborting on an expected missing release instead of creating it before uploading the MSI.

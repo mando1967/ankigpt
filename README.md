@@ -104,6 +104,29 @@ repository's Releases page manually. The updater correction is listed under
 **26.08.4** in [the changelog](CHANGELOG.md); it requires a newly built MSI
 before installed copies can use it.
 
+## Install on Linux
+
+Download `anki-<version>-linux-x86_64.tar.zst` from the
+[Releases page](https://github.com/mando1967/ankigpt/releases), then extract it
+and run the bundled installer from its folder:
+
+```bash
+tar --zstd -xf anki-<version>-linux-x86_64.tar.zst
+cd anki-linux
+sudo ./install.sh
+```
+
+The package includes Python, Qt, and the native runtime, and needs an x86_64
+system with glibc 2.35 or newer (Ubuntu 22.04 or later). On Debian and Ubuntu,
+`install.sh` also installs the required system libraries. It installs to
+`/usr/local` and adds an `anki` command and a desktop entry. To install for one
+user without `sudo`, run `PREFIX=~/.local ./install.sh` instead. Remove it with
+`<prefix>/share/anki/uninstall.sh`.
+
+The Linux package currently installs under the same `anki` name and data
+folder (`~/.local/share/Anki2`) as original Anki, so it replaces an existing
+Anki installed with the same installer.
+
 ## First-time setup
 
 For illustrated step-by-step instructions, choose **Web browser** in the app.
@@ -200,6 +223,20 @@ The build scanner skips generated Python caches, including `.pytest_cache`,
 so an inaccessible cache does not prevent configuration. See
 [Windows troubleshooting](docs/windows.md#generated-python-cache-permissions)
 if an older checkout fails with this error.
+
+## Linux package builds
+
+The [AnkiGPT Linux installer workflow](.github/workflows/ankigpt-linux-installer.yml)
+builds a self-contained x86_64 package on Ubuntu 22.04, bundling the fcitx5
+input-method plugin as upstream Anki does.
+
+- Run **Actions → AnkiGPT Linux installer → Run workflow** for a test artifact.
+- Pushing an `ankigpt-v<version>` tag builds the package and attaches
+  `anki-<version>-linux-x86_64.tar.zst` to the same GitHub Release as the MSI.
+- Run `./build-linux-installer.sh` locally to build the package into
+  `release/`. Add `--upload` to also attach it to the `ankigpt-v<version>`
+  release. Without fcitx5-qt6 and `patchelf` installed, the local build skips
+  the fcitx5 plugin and prints a warning.
 
 ## Testing
 
