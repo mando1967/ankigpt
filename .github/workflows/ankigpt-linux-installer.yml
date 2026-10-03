@@ -1,0 +1,165 @@
+name: AnkiGPT Linux installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version embedded in the package (leave blank to use .version)
+        required: false
+        type: string
+  push:
+    tags:
+      - "ankigpt-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ankigpt-linux-installer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-linux:
+    name: Build Linux x86_64 package
+    # The oldest supported runner keeps the package compatible with glibc 2.35+.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      RELEASE: 1
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Anki build environment
+        uses: ./.github/actions/setup-anki
+
+      - name: Resolve installer version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            version="${REF_NAME#ankigpt-v}"
+          elif [ -n "$REQUESTED_VERSION" ]; then
+            version="$(echo "$REQUESTED_VERSION" | tr -d '[:space:]')"
+          else
+            version="$(tr -d '[:space:]' < .version)"
+          fi
+
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([abrc][0-9]+)?$ ]]; then
+            echo "::error::Unsupported installer version: '$version'"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building AnkiGPT Linux package version $version"
+
+      - name: Build and install fcitx5-qt for bundling
+        run: |
+          sudo apt-get install --yes --no-install-recommends \
+            cmake extra-cmake-modules \
+            libfcitx5core-dev \
+            libgl-dev \
+            libxkbcommon-dev \
+            libx11-dev \
+            gettext \
+            patchelf
+          # Build against the same Qt as the bundled pyqt6-qt6
+          qt_version=$(uv export --frozen --no-hashes --package aqt --extra qt \
+            | grep -oP '^pyqt6-qt6==\K\S+')
+          test -n "$qt_version"
+          uv tool run --from aqtinstall aqt install-qt \
+            linux desktop "$qt_version" linux_gcc_64 -O /tmp/qt
+          qt_prefix=/tmp/qt/$qt_version/gcc_64
+          git clone --depth 1 --branch 5.0.10 \
+            https://github.com/fcitx/fcitx5-qt.git /tmp/fcitx5-qt
+          cmake -S /tmp/fcitx5-qt -B /tmp/fcitx5-qt-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_QT4=no \
+            -DENABLE_QT5=no \
+            -DENABLE_QT6=yes \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_PREFIX_PATH="$qt_prefix" \
+            -DQT_FIND_PRIVATE_MODULES=ON \
+            -DCMAKE_INSTALL_QT6PLUGINDIR=/usr/lib/qt6/plugins
+          cmake --build /tmp/fcitx5-qt-build -j$(nproc)
+          sudo cmake --install /tmp/fcitx5-qt-build
+
+      - name: Build and package
+        env:
+          ANKIGPT_INSTALLER_VERSION: ${{ steps.version.outputs.version }}
+        run: ./build-linux-installer.sh
+
+      - name: Verify package
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=(release/*.tar.zst)
+          if (( ${#packages[@]} != 1 )); then
+            echo "Expected exactly one Linux package; found ${#packages[@]}." >&2
+            exit 1
+          fi
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: AnkiGPT-${{ steps.version.outputs.version }}-linux-x86_64
+          path: release/*.tar.zst
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload installer logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: AnkiGPT-${{ steps.version.outputs.version }}-linux-build-logs
+          path: out/installer/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish-release:
+    name: Publish tagged Linux package
+    if: github.ref_type == 'tag'
+    needs: build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: AnkiGPT-*-linux-x86_64
+          path: release
+          merge-multiple: true
+
+      - name: Attach package to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          packages=(release/*.tar.zst)
+          if (( ${#packages[@]} != 1 )); then
+            echo "Expected exactly one downloaded package; found ${#packages[@]}." >&2
+            exit 1
+          fi
+
+          # The Windows MSI workflow runs on the same tag and may create the release first.
+          if ! gh release view "$TAG_NAME" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" \
+              --repo "$REPOSITORY" \
+              --title "AnkiGPT ${TAG_NAME#ankigpt-v}" \
+              --generate-notes \
+              || gh release view "$TAG_NAME" --repo "$REPOSITORY" >/dev/null
+          fi
+          gh release upload "$TAG_NAME" "${packages[0]}" --clobber --repo "$REPOSITORY"
