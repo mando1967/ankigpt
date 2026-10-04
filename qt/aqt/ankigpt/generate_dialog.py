@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from anki.collection import Collection, OpChanges
 from anki.decks import DeckId
 from aqt.ankigpt import extract
+from aqt.ankigpt.book_selection import page_units, select_chapters
 from aqt.ankigpt.book_structure import (
     BookUnit,
     classify_book_structure,
@@ -339,6 +340,7 @@ class CreateConceptDeckDialog(QDialog):
         book_options_layout.addRow(
             tr.ankigpt_book_concept_count(), self.book_count_mode
         )
+        self._add_initial_book_range(book_options_layout)
         self.book_options.setVisible(False)
         form.addRow(self.book_options)
 
@@ -363,6 +365,23 @@ class CreateConceptDeckDialog(QDialog):
         outer.addWidget(buttons)
         return page
 
+    def _add_initial_book_range(self, layout: QFormLayout) -> None:
+        self.initial_book_range_kind = QComboBox()
+        self.initial_book_range_kind.addItem("Chapter numbers", "chapters")
+        self.initial_book_range_kind.addItem("PDF page positions", "pages")
+        self.initial_book_range = QLineEdit()
+        self.initial_book_range.setPlaceholderText("All, or e.g. 10-18, 22")
+        self.initial_book_range.setToolTip(
+            "Choose the source range before extracting concepts. PDF pages use file positions, not printed page numbers."
+        )
+        layout.addRow("Select by", self.initial_book_range_kind)
+        layout.addRow("Extract range", self.initial_book_range)
+        selection_help = QLabel(
+            "Next: review detected chapters and your selected range. Concepts are extracted only after you continue from that review."
+        )
+        selection_help.setWordWrap(True)
+        layout.addRow(selection_help)
+
     def _build_structure_page(self) -> QWidget:
         page = QWidget()
         page.setObjectName("ankigptCanvas")
@@ -382,6 +401,28 @@ class CreateConceptDeckDialog(QDialog):
         self.book_split.setCurrentIndex(0)
         granularity_row.addWidget(self.book_split, 1)
         outer.addLayout(granularity_row)
+        selection_row = QHBoxLayout()
+        self.book_range_kind = QComboBox()
+        self.book_range_kind.addItem("Chapter numbers", "chapters")
+        self.book_range_kind.addItem("PDF page positions", "pages")
+        self.book_range = QLineEdit()
+        self.book_range.setPlaceholderText("All chapters, or e.g. 10-18, 22")
+        self.book_range.setToolTip(
+            "Selection is enforced before extraction. PDF pages use file positions, not printed numbers."
+        )
+        apply_range = QPushButton("Apply range")
+        qconnect(apply_range.clicked, self._apply_book_range)
+        selection_row.addWidget(self.book_range_kind)
+        selection_row.addWidget(self.book_range, 1)
+        selection_row.addWidget(apply_range)
+        outer.addLayout(selection_row)
+        self.book_selection_summary = QLabel(
+            "Check the chapters to extract below. Each selected chapter has its own reading budget."
+        )
+        self.book_selection_summary.setWordWrap(True)
+        outer.addWidget(self.book_selection_summary)
+        self._original_book_chapters: list[BookUnit] = []
+        self._applied_book_range: tuple[str, str] | None = None
         self.structure_tree = QTreeWidget()
         self._make_scroll_area_shrinkable(self.structure_tree)
         self.structure_tree.setColumnCount(4)
@@ -749,6 +790,7 @@ class CreateConceptDeckDialog(QDialog):
         )
 
     def _on_book_toggled(self, checked: bool) -> None:
+        self.extract_btn.setText("Review chapters" if checked else tr.ankigpt_extract())
         self.book_options.setVisible(checked)
         self.nonbook_options.setVisible(not checked)
         self.subcategory.setPlaceholderText(
@@ -852,6 +894,37 @@ class CreateConceptDeckDialog(QDialog):
 
         for index in range(root.childCount()):
             sync(root.child(index))
+
+    def _apply_book_range(self) -> bool:
+        if self._book_doc is None:
+            return False
+        value = self.book_range.text().strip()
+        kind = str(self.book_range_kind.currentData())
+        try:
+            if value and kind == "pages":
+                chapters = page_units(self._book_doc, value)
+                summary = f"Selected PDF pages: {value}. One reading budget per contiguous page range."
+            else:
+                chapters = self._original_book_chapters
+                if value:
+                    select_chapters(chapters, value)
+                else:
+                    for chapter in chapters:
+                        chapter.included = True
+                        for child in chapter.children:
+                            child.included = True
+                summary = "Selected chapters: " + ", ".join(
+                    c.title for c in chapters if c.included
+                )
+                summary += ". Each selected chapter has its own reading budget."
+        except ValueError as error:
+            showWarning(str(error), self)
+            return False
+        self._book_chapters = chapters
+        self._applied_book_range = (kind, value)
+        self.book_selection_summary.setText(summary)
+        self._fill_structure_tree()
+        return True
 
     def _book_siblings(self, item: QTreeWidgetItem) -> list[BookUnit]:
         parent = item.parent()
@@ -1121,6 +1194,15 @@ class CreateConceptDeckDialog(QDialog):
         self._finish_progress(tr.ankigpt_progress_done())
         self._book_doc = doc
         self._book_chapters = chapters
+        self._original_book_chapters = chapters
+        self.book_range.setText(self.initial_book_range.text().strip())
+        self.book_range_kind.setCurrentIndex(
+            self.initial_book_range_kind.currentIndex()
+        )
+        self._applied_book_range = ("chapters", "")
+        self.book_selection_summary.setText(
+            "Check the chapters to extract below. Each selected chapter has its own reading budget."
+        )
         self._book_structure_ai = used_ai
         if not self._book_chapters:
             showWarning(tr.ankigpt_book_no_structure(), self)
@@ -1128,12 +1210,20 @@ class CreateConceptDeckDialog(QDialog):
             return
         self.book_split.setCurrentIndex(0)
         self._fill_structure_tree()
+        if self.book_range.text().strip():
+            self._apply_book_range()
         if not used_ai:
             tooltip(tr.ankigpt_book_structure_fallback(), parent=self)
         self.stack.setCurrentIndex(1)
 
     def _extract_book_units(self) -> None:
         if self._book_doc is None:
+            return
+        selection = (
+            str(self.book_range_kind.currentData()),
+            self.book_range.text().strip(),
+        )
+        if selection != self._applied_book_range and not self._apply_book_range():
             return
         if self.book_split.currentData() is None:
             showWarning(tr.ankigpt_book_choose_granularity_warning(), self)

@@ -12,9 +12,9 @@ from typing import Protocol
 from aqt.ankigpt.extract import split_sections, suggest_target_count
 
 _HEADING = re.compile(
-    r"(?m)^(?P<marks>#{1,6})\s+(?P<markdown>\S.*)$|"
-    r"^(?P<plain>(?:(?:chapter|part|section|unit)\s+[\dIVXivx]+\b|"
-    r"\d+(?:\.\d+)*\.?\s+)[A-Z][^\n]{2,89}|[A-Z][A-Z0-9 ,:'&-]{3,89})$"
+    r"(?m)^[ \t]*(?P<marks>#{1,6})[ \t]+(?P<markdown>\S.*)$|"
+    r"^[ \t]*(?P<plain>(?i:chapter|part|section|unit)[ \t]+[\dIVXivx]+\b[^\n]{0,90}|"
+    r"\d+(?:\.\d+)*\.?[ \t]+[A-Z][^\n]{2,89}|[A-Z][A-Z0-9 ,:'&-]{3,89})[ \t]*$"
 )
 _CHAPTER = re.compile(r"^(?:chapter|part|unit)\s+[\dIVXivx]+\b", re.IGNORECASE)
 
@@ -58,6 +58,7 @@ class BookUnit:
     children: list[BookUnit] = field(default_factory=list)
     included: bool = True
     confidence: float = 1.0
+    number: int | None = None
 
     @property
     def length(self) -> int:
@@ -80,7 +81,7 @@ def detect_book_structure(text: str) -> list[BookUnit]:
         title = (match.group("markdown") or match.group("plain") or "").strip()
         level = len(match.group("marks") or "")
         if not level:
-            level = 1 if _CHAPTER.match(title) else 2
+            level = 1 if _CHAPTER.match(title) or re.match(r"^\d+\.?\s+", title) else 2
         headings.append((match.start(), title, level))
 
     chapter_positions = [
@@ -125,13 +126,13 @@ def detect_book_structure(text: str) -> list[BookUnit]:
 def classify_book_structure(
     text: str, client: StructureClient
 ) -> tuple[list[BookUnit], bool]:
-    """Classify local candidates with the model, validating all offsets locally."""
+    """Classify the entire document in bounded batches, retaining omitted headings."""
     matches = list(_HEADING.finditer(text))
-    if len(matches) < 2:
+    if not matches:
         return detect_book_structure(text), False
-    lines: list[str] = []
     candidates: list[tuple[int, str, int]] = []
-    for index, match in enumerate(matches[:500]):
+    defaults: list[dict] = []
+    for index, match in enumerate(matches):
         title = (match.group("markdown") or match.group("plain") or "").strip()
         level = len(match.group("marks") or "")
         suggested = (
@@ -140,19 +141,49 @@ def classify_book_structure(
             else "section"
         )
         candidates.append((match.start(), title, level))
-        lines.append(
-            f"[{index}] offset={match.start()} suggested={suggested} title={title}"
+        defaults.append(
+            {"index": index, "kind": suggested, "title": title, "confidence": 0.5}
         )
-    system = """Classify candidate book headings. Keep real chapter and section boundaries; ignore table-of-contents entries, repeated headers/footers, and decorative lines. Never invent indices. Chapters contain following sections until the next chapter. Return concise cleaned titles and confidence from 0 to 1."""
-    user = "DOCUMENT HEADING CANDIDATES:\n" + "\n".join(lines)
-    try:
-        data = client.complete_json(
-            system, user, "classify_book_structure", STRUCTURE_SCHEMA
-        )
-        units = _validated_classification(text, candidates, data)
-    except Exception:
-        units = []
-    return (units, True) if units else (detect_book_structure(text), False)
+    system = """Classify candidate book headings. This is one consecutive batch from a possibly partial book; numbering may start above 1. Keep real chapter and section boundaries; ignore table-of-contents entries, repeated headers/footers, and decorative lines. Classify EVERY supplied index exactly once, including ignored entries. Indices are global: never renumber them or invent indices. Preserve chapter and section numbers in cleaned titles. A section can belong to a chapter in a previous batch. Return confidence from 0 to 1."""
+    classified: list[dict] = []
+    used_ai = False
+    # No prefix cap: every heading, including those late in a long book, is visited.
+    for batch_start in range(0, len(candidates), 100):
+        batch = defaults[batch_start : batch_start + 100]
+        lines = [
+            f"[{item['index']}] offset={candidates[item['index']][0]} "
+            f"suggested={item['kind']} title={item['title']}"
+            for item in batch
+        ]
+        by_index = {}
+        try:
+            data = client.complete_json(
+                system,
+                "DOCUMENT HEADING CANDIDATES:\n" + "\n".join(lines),
+                "classify_book_structure",
+                STRUCTURE_SCHEMA,
+            )
+            for raw in data.get("headings", []):
+                try:
+                    index = int(raw["index"])
+                    confidence = float(raw["confidence"])
+                    if not 0 <= confidence <= 1 or raw["kind"] not in {
+                        "chapter",
+                        "section",
+                        "ignore",
+                    }:
+                        continue
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if batch_start <= index < batch_start + len(batch):
+                    by_index[index] = raw
+            used_ai = used_ai or bool(by_index)
+        except Exception:
+            pass
+        # Partial responses and failed batches must not erase the document's tail.
+        classified.extend(by_index.get(item["index"], item) for item in batch)
+    units = _validated_classification(text, candidates, {"headings": classified})
+    return (units, used_ai) if units else (detect_book_structure(text), False)
 
 
 def _validated_classification(
@@ -176,12 +207,24 @@ def _validated_classification(
     # Exact repeats commonly come from a table of contents followed by the real
     # heading. Keep the later boundary, which is normally the body occurrence.
     last_for_title: dict[tuple[str, str], int] = {}
-    for position, (_index, kind, title, _confidence) in enumerate(selected):
-        last_for_title[(kind, title.casefold())] = position
+
+    def identity(item: tuple[int, str, str, float]) -> tuple[str, str]:
+        index, kind, title, _confidence = item
+        # Cleaned titles can coincide across different numbered chapters.
+        original = candidates[index][1]
+        key = (
+            original
+            if kind == "chapter" and re.match(r"(?i)^(?:chapter\s+)?\d+\b", original)
+            else title
+        )
+        return kind, key.casefold()
+
+    for position, item in enumerate(selected):
+        last_for_title[identity(item)] = position
     selected = [
         item
         for position, item in enumerate(selected)
-        if last_for_title[(item[1], item[2].casefold())] == position
+        if last_for_title[identity(item)] == position
     ]
     if not any(kind == "chapter" for _index, kind, _title, _confidence in selected):
         return []
@@ -198,6 +241,11 @@ def _validated_classification(
             if current is not None:
                 current.end = start
             current = BookUnit(title, start, end, confidence=confidence)
+            original_number = re.match(
+                r"(?i)^(?:chapter\s+)?(\d+)\b", candidates[index][1]
+            )
+            if original_number:
+                current.number = int(original_number[1])
             chapters.append(current)
         elif kind == "section" and current is not None:
             current.children.append(BookUnit(title, start, end, confidence=confidence))

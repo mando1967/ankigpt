@@ -81,6 +81,7 @@ def install(mw: AnkiQt) -> None:
     """Add menu entries and hooks. Called once from AnkiQt setup."""
     from aqt.ankigpt.audio import close_audio, show_audio
     from aqt.ankigpt.browser import close_browser, show_browser
+    from aqt.ankigpt.credits import install_credit_indicator
     from aqt.ankigpt.generate_dialog import CreateConceptDeckDialog, open_deck_settings
 
     global _menu
@@ -112,6 +113,7 @@ def install(mw: AnkiQt) -> None:
     _install_deck_browser_button(mw)
     _install_study_hub(mw)
     _install_shell_chrome(mw)
+    install_credit_indicator(mw)
     _install_deck_badges(mw)
     _install_help(mw)
     gui_hooks.profile_did_open.append(lambda: _refresh_notetype_css(mw))
@@ -231,6 +233,13 @@ def _install_deck_browser_button(mw: AnkiQt) -> None:
             from aqt.ankigpt.audio import show_audio
 
             show_audio(mw)
+            return (True, None)
+        if message.startswith("ankigpt:save-study:") and isinstance(
+            context, DeckBrowser
+        ):
+            from aqt.ankigpt.study_export import save_study
+
+            save_study(mw, message)
             return (True, None)
         if message.startswith("ankigpt:study:") and isinstance(context, DeckBrowser):
             _start_study_from_shell(mw, context, message)

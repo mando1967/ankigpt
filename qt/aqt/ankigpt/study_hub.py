@@ -10,6 +10,32 @@ from collections.abc import Iterable
 from typing import Any
 
 
+def _focus_picker(
+    name: str, label: str, options: list[tuple[int, str]], selected: int
+) -> str:
+    """Keep choices in the document instead of QtWebEngine's native popup."""
+    choices = "".join(
+        f'<button type="button" data-value="{value}" onclick="ankigptChooseFocus(this)">{html.escape(text)}</button>'
+        for value, text in options
+    )
+    current = next(text for value, text in options if value == selected)
+    minimum, maximum = (1, 100) if name == "focus-goal" else (0, 120)
+    return (
+        f'<div class="focus-choice"><span>{html.escape(label)}</span>'
+        f'<details class="focus-picker"><summary aria-label="{html.escape(label)}">'
+        f"<span>{html.escape(current)}</span></summary>"
+        f'<input type="hidden" id="{name}" value="{selected}">'
+        f'<div class="focus-choice-menu">{choices}'
+        '<button type="button" onclick="ankigptCustomFocus(this)">Custom…</button>'
+        "</div></details>"
+        f'<input class="focus-custom" type="number" aria-label="Custom {html.escape(label)}" '
+        f'min="{minimum}" max="{maximum}" step="1" value="{selected}" required hidden '
+        f'data-target="{name}" oninput="ankigptUpdateCustomFocus(this)" '
+        f'title="Enter a whole number from {minimum} to {maximum}.'
+        f'{" Use 0 for untimed." if minimum == 0 else ""}"></div>'
+    )
+
+
 def _all_decks(nodes: Iterable[Any]) -> list[Any]:
     decks: list[Any] = []
     for node in nodes:
@@ -460,6 +486,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         <label><input type="radio" name="deck-action" value="edit"> Edit</label>
         <span id="deck-selection-status" class="deck-selection-status">No deck selected</span>
         <button id="deck-go" class="hub-primary" type="button" disabled title="Select a deck to continue." onclick="ankigptDeckGo()">GO</button>
+        <button id="deck-save" class="hub-secondary" type="button" disabled{picker_hidden} onclick="ankigptDeckSave()">SAVE</button>
       </div>
       <div id="study-mode-picker" class="study-mode-picker"{picker_hidden}>
         <strong>Study modes</strong>
@@ -473,8 +500,8 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
       <div id="focus-options" class="focus-options" hidden>
         <button type="button" class="hub-secondary" onclick="pycmd('ankigpt:audio')">Background sounds…</button>
         <strong>Small session goal</strong>
-        <label>Cards <select id="focus-goal"><option value="3">3 · Just start</option><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select></label>
-        <label>Quiet timer <select id="focus-minutes"><option value="0">Untimed</option><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="15">15 minutes</option><option value="25">25 minutes</option></select></label>
+        {_focus_picker("focus-goal", "Cards", [(3, "3 · Just start"), (5, "5"), (10, "10"), (20, "20")], 5)}
+        {_focus_picker("focus-minutes", "Quiet timer", [(0, "Untimed"), (5, "5 minutes"), (10, "10 minutes"), (15, "15 minutes"), (25, "25 minutes")], 10)}
         <small>Navigation is reduced while studying. You can pause or leave at any time.</small>
       </div>
       <div class="deck-card"><table class="hub-table deck-tree">
@@ -484,8 +511,56 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
       <script>
       let ankigptSelectedDeck = null;
       function ankigptToggleFocus(enabled) {{ document.getElementById('focus-options').hidden = !enabled; }}
+      function ankigptChooseFocus(button) {{
+        const picker = button.closest('.focus-picker');
+        picker.querySelector('input').value = button.dataset.value;
+        picker.closest('.focus-choice').querySelector('.focus-custom').hidden = true;
+        picker.querySelector('summary span').textContent = button.textContent;
+        picker.open = false;
+        picker.querySelector('summary').focus();
+      }}
+      function ankigptCustomFocus(button) {{
+        const picker = button.closest('.focus-picker');
+        const input = picker.closest('.focus-choice').querySelector('.focus-custom');
+        input.value = picker.querySelector('input').value;
+        input.hidden = false;
+        picker.open = false;
+        ankigptUpdateCustomFocus(input);
+        input.focus(); input.select();
+      }}
+      function ankigptUpdateCustomFocus(input) {{
+        if (!input.checkValidity()) return;
+        document.getElementById(input.dataset.target).value = input.value;
+        input.closest('.focus-choice').querySelector('summary span').textContent =
+          input.dataset.target === 'focus-minutes'
+            ? (Number(input.value) === 0 ? 'Untimed' : `${{input.value}} minutes`)
+            : input.value;
+      }}
+      function ankigptValidateFocus() {{
+        if (!document.getElementById('focus-enabled').checked) return true;
+        for (const input of document.querySelectorAll('.focus-custom:not([hidden])')) {{
+          if (!input.reportValidity()) return false;
+        }}
+        return true;
+      }}
+      document.addEventListener('click', event => {{
+        document.querySelectorAll('.focus-picker[open]').forEach(picker => {{
+          if (!picker.contains(event.target)) picker.open = false;
+        }});
+      }});
+      document.addEventListener('focusin', event => {{
+        document.querySelectorAll('.focus-picker[open]').forEach(picker => {{
+          if (!picker.contains(event.target)) picker.open = false;
+        }});
+      }});
+      document.addEventListener('keydown', event => {{
+        if (event.key === 'Escape') document.querySelectorAll('.focus-picker[open]').forEach(picker => {{
+          picker.open = false; picker.querySelector('summary').focus();
+        }});
+      }});
       document.querySelectorAll('input[name="deck-action"]').forEach(input => input.addEventListener('change', () => {{
         document.getElementById('study-mode-picker').hidden = input.value !== 'study' || !input.checked;
+        document.getElementById('deck-save').hidden = input.value !== 'study' || !input.checked;
       }}));
       function ankigptSelectDeck(row) {{
         document.querySelectorAll('.deck-tree tr.selected').forEach(item => {{
@@ -499,6 +574,7 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
         document.getElementById('deck-selection-status').textContent = `Selected: ${{deckName}}`;
         const go = document.getElementById('deck-go');
         go.disabled = false;
+        document.getElementById('deck-save').disabled = false;
         go.title = `Continue with ${{deckName}}`;
       }}
       function ankigptToggleDeck(button, event) {{
@@ -522,9 +598,19 @@ def _route_content(  # noqa: PLR0911 - each shell destination has distinct marku
           ankigptCollapseDeck(child);
         }});
       }}
+      function ankigptDeckSave() {{
+        if (!ankigptSelectedDeck) return;
+        if (!ankigptValidateFocus()) return;
+        const modes = Array.from(document.querySelectorAll('input[name="study-mode"]:checked')).map(input => input.value);
+        document.getElementById('study-mode-error').hidden = modes.length > 0;
+        const focus = document.getElementById('focus-enabled').checked;
+        const countSuffix = focus ? `:focus:${{document.getElementById('focus-goal').value}}` : '';
+        if (modes.length) pycmd(`ankigpt:save-study:${{ankigptSelectedDeck}}:${{modes.join(',')}}${{countSuffix}}`);
+      }}
       function ankigptDeckGo() {{
         if (!ankigptSelectedDeck) return;
         const action = document.querySelector('input[name="deck-action"]:checked').value;
+        if (action === 'study' && !ankigptValidateFocus()) return;
         const modes = Array.from(document.querySelectorAll('input[name="study-mode"]:checked')).map(input => input.value);
         if (action === 'study' && !modes.length) {{
           document.getElementById('study-mode-error').hidden = false;
@@ -622,6 +708,7 @@ center > table { width:100%; max-width:none; }
 .deck-picker-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; }.deck-picker-actions label { padding:8px 11px; color:#34435f; background:#f7f9fc; border:1px solid #dce3ec; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }.deck-picker-actions input { margin:0 5px 0 0; vertical-align:-1px; }.deck-picker-actions .hub-primary { margin-left:5px; padding:9px 22px; }.deck-selection-status { margin-right:auto; color:#667085; font-size:12px; font-weight:700; }.hub-primary:disabled { cursor:not-allowed; opacity:.45; }
 .study-mode-picker { display:flex; justify-content:flex-end; align-items:center; gap:9px; margin:-2px 0 12px; padding:10px 12px; background:#f7f9fc; border:1px solid #dce3ec; border-radius:9px; font-size:12px; }.study-mode-picker[hidden] { display:none; }.study-mode-picker label { white-space:nowrap; }.study-mode-picker input { vertical-align:-1px; }.study-mode-picker span { color:#b42318; font-weight:700; }
 .focus-toggle{color:#174ea6!important;background:#edf3ff!important}.focus-options{display:flex;align-items:center;gap:14px;margin:-4px 0 12px;padding:12px 14px;color:#34435f;background:#f6f9ff;border:1px solid #cddcff;border-radius:9px;font-size:12px}.focus-options[hidden]{display:none}.focus-options label{display:flex;align-items:center;gap:7px;font-weight:700}.focus-options select{padding:6px 8px;color:#243557;background:#fff;border:1px solid #c9d4e7;border-radius:7px}.focus-options small{margin-left:auto;color:#718096}.focus-summary{max-width:760px}.focus-summary .metric-grid{grid-template-columns:repeat(3,1fr)}
+.focus-custom{box-sizing:border-box;width:76px;padding:6px 8px;border:1px solid #c9d4e7;border-radius:7px;font:inherit;color:#243557;background:#fff}.focus-custom[hidden]{display:none}.focus-choice{display:flex;align-items:center;gap:7px;font-weight:700}.focus-picker{position:relative;flex:none;font-size:12px;line-height:18px}.focus-picker summary{box-sizing:border-box;min-width:72px;padding:6px 8px;color:#243557;background:#fff;border:1px solid #c9d4e7;border-radius:7px;cursor:pointer;white-space:nowrap}.focus-choice-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;box-sizing:border-box;width:140px;padding:4px;background:#fff;border:1px solid #c9d4e7;border-radius:7px;box-shadow:0 5px 15px #14213d26}.focus-choice-menu button{display:block;box-sizing:border-box;width:100%;height:32px;padding:5px 8px;border:0;border-radius:4px;background:#fff;color:#243557;text-align:left;font:inherit;cursor:pointer}.focus-choice-menu button:hover,.focus-choice-menu button:focus-visible{background:#edf3ff;outline:2px solid #8eb4ff}.focus-options{flex-wrap:wrap}
 .deck-card { overflow:hidden; border:1px solid #e0e6ee; border-radius:11px; }.hub-table { width:100%; border-collapse:collapse; }.hub-table th { padding:11px 14px; color:#718096; background:#f7f9fc; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }.hub-table td { padding:13px 14px; border-top:1px solid #edf0f4; }.hub-table tbody tr { cursor:pointer; }.deck-tree tbody tr[hidden] { display:none !important; }.hub-table tbody tr:hover { background:#f4f7ff; }.hub-table tbody tr.selected { color:#102f73; background:#cfe1ff; box-shadow:inset 5px 0 #2367e8, inset 0 0 0 2px #8eb4ff; }.deck-tree tbody tr.selected>td,.deck-tree tbody tr.selected:hover>td { background:#cfe1ff !important; }.hub-table tbody tr.selected .deck-name small { color:#3157a8; }.hub-table th:not(:first-child),.hub-table td:not(:first-child) { text-align:center; }.deck-name { display:flex; align-items:center; gap:7px; padding-left:calc(var(--deck-depth) * 21px); }.deck-name small { margin-left:auto; color:#8a94a6; font-size:10px; font-weight:650; text-transform:uppercase; }.deck-selected-badge { display:none; padding:3px 7px; color:#174ea6; background:#fff; border:1px solid #8eb4ff; border-radius:999px; font-size:10px; white-space:nowrap; }.deck-tree tr.selected .deck-name small { margin-left:0; }.deck-tree tr.selected .deck-selected-badge { display:inline-block; margin-left:auto; }.deck-disclosure { display:grid; place-items:center; width:22px; height:22px; padding:0; color:#3157d5; background:transparent; border:0; border-radius:5px; cursor:pointer; }.deck-disclosure:hover { background:#dce7ff; }.deck-disclosure-spacer { width:22px; }
 .status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; font-weight:650; }.status i { width:7px; height:7px; border-radius:50%; background:#22a06b; }.status.due i { background:#e69228; }.hub-empty { padding:35px !important; color:#718096; text-align:center !important; }
 .page-head { margin:6px 0 24px; }.page-head h1 { margin:7px 0 5px; color:#10204d; font-size:30px; }.page-head p,.content-card p { color:#667085; }.content-card { padding:22px; background:#fff; border:1px solid #e0e6ee; border-radius:12px; box-shadow:0 5px 18px rgba(31,54,92,.05); }.search-shell { display:flex; align-items:center; gap:8px; padding:12px 14px; margin-bottom:18px; color:#8a94a6; background:#f7f9fc; border:1px solid #e0e6ee; border-radius:9px; }.search-shell input { flex:1; min-width:0; padding:0; color:#263653; background:transparent; border:0; outline:0; font:inherit; }.search-shell span { white-space:nowrap; font-size:12px; }.course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.course-tile { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:14px; text-align:left; color:#243557; background:#fff; border:1px solid #e1e6ee; border-radius:10px; cursor:pointer; }.course-tile[hidden],.empty-card[hidden] { display:none; }.course-tile:hover { border-color:#7da3ef; background:#f7f9ff; }.course-tile small { display:block; margin-top:3px; color:#7b879b; }.course-icon { display:grid; place-items:center; width:34px; height:34px; color:#2367e8; background:#eaf0ff; border-radius:9px; }.empty-card { color:#718096; padding:30px; text-align:center; }.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }.metric { padding:18px; background:#fff; border:1px solid #e0e6ee; border-top:3px solid #8d99ae; border-radius:11px; }.metric.blue{border-top-color:#2367e8}.metric.amber{border-top-color:#e69228}.metric.green{border-top-color:#22a06b}.metric span { display:block; color:#718096; font-size:12px; }.metric strong { display:block; margin-top:7px; color:#17274e; font-size:27px; }.progress-card h2,.settings-grid h2 { margin-top:0; }.progress-track { height:9px; overflow:hidden; margin-top:18px; background:#e9edf3; border-radius:9px; }.progress-track i { display:block; height:100%; background:linear-gradient(90deg,#2367e8,#67a2ff); border-radius:9px; }.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.setting-row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid #edf0f4; }.setting-row b { color:#22a06b; }

@@ -27,8 +27,35 @@ listed once, under the deck of their first card.
 
 ## Focus sessions
 
+On Home, select a deck and choose **Study** to display **SAVE** beside **GO**.
+With Focus Session off, SAVE asks how many cards to generate (default 20).
+With Focus Session on, SAVE uses its selected card goal without asking again.
+The count is the total across selected study modes, not a count per mode.
+SAVE spreads questions across AnkiGPT concepts and checked study modes, including
+concepts in subdecks, regardless of their due dates. Larger exports revisit concepts
+to generate additional questions. Ordinary
+Anki notes are not included. Generation uses your configured AI provider and does
+not change review scheduling or study settings. The focus timer does not limit exports.
+
+Choose PDF for a printable question-and-answer document, HTML for an offline
+viewer with Show Answer, Previous, Next, and a card counter, or an import format:
+
+- **AnkiWeb:** import the UTF-8 text file into Anki as Basic notes, mapping Front
+  and Back, then sync to AnkiWeb.
+- **Quizlet:** paste the text file into Quizlet's Import screen, selecting Tab
+  between terms/definitions and New line between cards.
+
+Exports contain question text, choices, answers, explanations, and key points.
+They do not include concept media or live AI grading.
+
 In Study, enable focus mode and choose a card goal and an optional timer before
-starting. The reviewer displays progress and provides a break control. Pausing
+starting. Both menus retain their presets and offer **Custom…**: enter 1–100 cards
+or 0–120 minutes (0 is untimed). SAVE also accepts the custom card goal. The menus
+render inside the page to keep their size stable while open in the scaled app.
+During SAVE generation, the status box shows the percentage and completed card
+count, updating after each question finishes.
+
+The reviewer displays progress and provides a break control. Pausing
 excludes break time from the session timer and prevents answering while paused.
 
 The session finishes after rating a card when the goal or time limit has been

@@ -31,6 +31,13 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert 'value="study"' in page
     assert 'value="edit"' in page
     assert 'id="deck-go"' in page
+    assert 'id="deck-save" class="hub-secondary" type="button" disabled hidden' in page
+    assert "ankigpt:save-study:" in page
+    assert "${modes.join(',')}${countSuffix}" in page
+    assert (
+        "const countSuffix = focus ? `:focus:${document.getElementById('focus-goal').value}` : '';"
+        in page
+    )
     assert 'title="Select a deck to continue."' in page
     assert "No deck selected" in page
     assert "✓ Selected" in page
@@ -51,6 +58,10 @@ def test_hub_renders_decks_actions_and_escapes_names() -> None:
     assert "Exit" in page and "ankigpt:exit" in page
 
     study_page = render_study_hub(root, "Today", "study")
+    assert (
+        'id="deck-save" class="hub-secondary" type="button" disabled onclick='
+        in study_page
+    )
     assert 'value="study" checked' in study_page
     assert 'id="study-mode-picker" class="study-mode-picker"' in study_page
     assert study_page.count('<input type="checkbox" name="study-mode"') == 4

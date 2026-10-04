@@ -1,12 +1,110 @@
 # Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
+from aqt.ankigpt.book_selection import select_chapters
 from aqt.ankigpt.book_structure import (
     classify_book_structure,
     deck_root,
     detect_book_structure,
     generation_units,
 )
+from aqt.ankigpt.llm import FakeLLMClient
+
+
+def test_long_book_classifies_headings_beyond_old_500_limit() -> None:
+    class Client(FakeLLMClient):
+        batches = 0
+
+        def complete_json(self, system, user, schema_name, json_schema):
+            self.batches += 1
+            assert user.count("suggested=") <= 100
+            return super().complete_json(system, user, schema_name, json_schema)
+
+    text = "\n".join(
+        f"Chapter {chapter} Topic {chapter}\n"
+        + "\n".join(
+            f"{chapter}.{section} Section {section}\nbody text"
+            for section in range(1, 61)
+        )
+        for chapter in range(1, 19)
+    )
+    client = Client()
+    chapters, used_ai = classify_book_structure(text, client)
+    assert used_ai
+    assert client.batches > 5
+    assert [chapter.number for chapter in chapters] == list(range(1, 19))
+    select_chapters(chapters, "10-18")
+    units = generation_units(chapters, False)
+    assert len(units) == 9
+    assert text[units[0][1].start :].startswith("Chapter 10")
+    assert units[-1][1].end == len(text)
+    assert all(len(chapter.children) == 60 for chapter in chapters)
+
+
+def test_partial_ai_response_does_not_discard_later_chapters() -> None:
+    class Client:
+        def complete_json(self, *args):
+            return {
+                "headings": [
+                    {
+                        "index": i,
+                        "kind": "chapter",
+                        "title": f"Chapter {i + 1}",
+                        "confidence": 1,
+                    }
+                    for i in range(9)
+                ]
+            }
+
+    text = "\n".join(f"Chapter {i}\nbody text" for i in range(1, 19))
+    chapters, used_ai = classify_book_structure(text, Client())
+    assert used_ai
+    assert [c.number for c in chapters] == list(range(1, 19))
+    assert chapters[8].end == chapters[9].start
+    assert chapters[9].confidence == 0.5
+
+
+def test_failed_later_batch_retains_chapters() -> None:
+    class Client(FakeLLMClient):
+        batches = 0
+
+        def complete_json(self, *args):
+            self.batches += 1
+            if self.batches == 2:
+                raise RuntimeError("network unavailable")
+            return super().complete_json(*args)
+
+    text = "\n".join(f"Chapter {i}\nbody text" for i in range(1, 121))
+    chapters, used_ai = classify_book_structure(text, Client())
+    assert used_ai
+    assert len(chapters) == 120
+    assert chapters[-1].number == 120
+
+
+def test_numbered_titles_detected_without_ai() -> None:
+    chapters = detect_book_structure("10 Motion\nbody\n11 Forces\nbody")
+    assert [c.title for c in chapters] == ["10 Motion", "11 Forces"]
+
+
+def test_same_cleaned_title_does_not_merge_different_chapters() -> None:
+    class Client:
+        def complete_json(self, *args):
+            return {
+                "headings": [
+                    {
+                        "index": i,
+                        "kind": "chapter",
+                        "title": "Overview",
+                        "confidence": 1,
+                    }
+                    for i in range(2)
+                ]
+            }
+
+    chapters, _ = classify_book_structure(
+        "Chapter 10 First\nbody\nChapter 11 Second\nbody", Client()
+    )
+    assert [c.number for c in chapters] == [10, 11]
 
 
 def test_deck_root_places_subcategory_under_course() -> None:
