@@ -1,5 +1,14 @@
 # Changelog
 
+## 26.08.5
+
+- Added saving generated study decks to PDF, HTML, AnkiWeb import text, or Quizlet import text, including concepts in subdecks and the selected study modes.
+- Added percentage and completed-card progress during question generation for saved decks.
+- Added chapter-number and PDF page-range selection before concept extraction, with reading budgets applied only to the selected units.
+- Fixed chapter-heading recognition and removed the first-500-heading detection cutoff. Long books are classified in batches, and omitted headings or failed later batches no longer silently discard the remaining chapters.
+- Replaced Focus Session native dropdowns with stable in-page menus and added custom goals of 1–100 cards and timers of 0–120 minutes (0 is untimed).
+- Added a compact AI account-credit indicator. OpenRouter account balances are displayed when permissions allow; OpenAI accounts provide a billing link because no supported prepaid-balance endpoint is documented.
+
 ## 26.08.4
 
 - Fixed Windows PowerShell aborting on an expected missing release instead of creating it before uploading the MSI.
